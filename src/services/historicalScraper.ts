@@ -3,6 +3,7 @@ import { db } from '../db';
 import { markets, trades, wallets } from '../db/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { processTradeForFilter } from './filterService';
+import { subscribeToMarket } from './realtimeListener';
 import pLimit from 'p-limit';
 
 export let isShuttingDown = false;
@@ -43,6 +44,9 @@ export async function scrapeHistoricalData() {
           .set({ resolved: marketData.closed || !marketData.active })
           .where(eq(markets.conditionId, marketData.conditionId));
       }
+
+      // Phase 15: Automatically subscribe to this live market on the WebSocket
+      subscribeToMarket(marketData.conditionId);
 
       // 3. Fetch Deep Paginated trades for market (Up to 20,000)
       console.log(`[Scraper][Worker] Fetching deep pagination for market ${marketData.conditionId.substring(0, 8)}...`);

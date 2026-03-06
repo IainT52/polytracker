@@ -9,6 +9,7 @@ let ws: WebSocket | null = null;
 const SUBSCRIBED_MARKETS = new Set<string>();
 
 let heartbeatTimeout: NodeJS.Timeout | null = null;
+let pingInterval: NodeJS.Timeout;
 
 const heartbeat = () => {
   if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
@@ -20,6 +21,7 @@ const heartbeat = () => {
 
 export function closeWebSocket() {
   if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+  if (pingInterval) clearInterval(pingInterval);
   if (ws) {
     console.log('[WS] Gracefully terminating WebSocket connection...');
     ws.terminate();
@@ -34,7 +36,14 @@ export function connectWebSocket() {
   ws.on('open', () => {
     console.log('[WS] Connected successfully.');
     heartbeat();
-    // We will dynamically subscribe to markets here as we discover them
+    pingInterval = setInterval(() => {
+      if (ws?.readyState === WebSocket.OPEN) ws.ping();
+    }, 30000);
+
+    // Re-subscribe to known markets on reconnect
+    const marketsToResubscribe = Array.from(SUBSCRIBED_MARKETS);
+    SUBSCRIBED_MARKETS.clear(); // Clear so the function actually sends the message
+    marketsToResubscribe.forEach(m => subscribeToMarket(m));
   });
 
   ws.on('ping', heartbeat);
@@ -56,6 +65,7 @@ export function connectWebSocket() {
 
   ws.on('close', () => {
     if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+    if (pingInterval) clearInterval(pingInterval);
     console.log('[WS] Connection closed. Reconnecting in 5s...');
     setTimeout(connectWebSocket, 5000);
   });
