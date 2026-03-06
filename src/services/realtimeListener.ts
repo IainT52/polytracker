@@ -51,15 +51,21 @@ export function connectWebSocket() {
 
   ws.on('message', async (data) => {
     heartbeat();
+    let message;
     try {
-      const message = JSON.parse(data.toString());
+      message = JSON.parse(data.toString());
+    } catch (e) {
+      console.warn('[WS] Received non-JSON message:', data.toString());
+      return;
+    }
 
+    try {
       // Polymarket CLOB returns trade events
       if (message.event === 'trade') {
         await handleLiveTrade(message.data);
       }
     } catch (e) {
-      console.error('[WS] Error parsing message:', e);
+      console.error('[WS] Error handling message:', e);
     }
   });
 
@@ -75,16 +81,21 @@ export function connectWebSocket() {
   });
 }
 
-export function subscribeToMarket(marketId: string) {
+export async function subscribeToMarket(marketId: string) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
   if (!SUBSCRIBED_MARKETS.has(marketId)) {
-    ws.send(JSON.stringify({
-      action: "subscribe",
-      channel: "trades",
-      market: marketId
-    }));
-    SUBSCRIBED_MARKETS.add(marketId);
+    const market = await db.select().from(markets).where(eq(markets.conditionId, marketId)).get();
+    if (market) {
+      const tokenIds = JSON.parse(market.clobTokenIds || '[]');
+      if (Array.isArray(tokenIds) && tokenIds.length > 0) {
+        ws.send(JSON.stringify({
+          assets_ids: tokenIds,
+          operation: "subscribe"
+        }));
+        SUBSCRIBED_MARKETS.add(marketId);
+      }
+    }
   }
 }
 
