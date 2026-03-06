@@ -2,6 +2,8 @@ import { bot } from './bot/telegramBot';
 import { connectWebSocket } from './services/realtimeListener';
 import { scrapeHistoricalData } from './services/historicalScraper';
 import { startApiServer } from './api/server';
+import { runWalletGrader } from './engine/grader';
+import { mapSyndicates } from './engine/syndicateMapper';
 
 async function bootstrap() {
   console.log('🚀 Starting PolyTracker...');
@@ -27,7 +29,30 @@ async function bootstrap() {
     console.warn('⚠️ No TELEGRAM_BOT_TOKEN provided. Bot is offline.');
   }
 
+  // Schedule (in minutes): 5 cycles of 1 min, three 2s, one 5, then capped at 10 forever
+  const backoffScheduleMins = [1, 1, 1, 1, 1, 2, 2, 2, 5];
+  let runCount = 0;
+  const scheduleAnalytics = () => {
+    // Determine wait time: use the array, or default to 10 minutes if we've exhausted the array
+    const nextWaitMins = runCount < backoffScheduleMins.length ? backoffScheduleMins[runCount] : 10;
+    const nextWaitMs = nextWaitMins * 60 * 1000;
 
+    setTimeout(async () => {
+      console.log(`\n--- 🧠 Running Scheduled Analytical Engines (Run #${runCount + 1}) ---`);
+      try {
+        await runWalletGrader();
+        await mapSyndicates(); // Use the correct imported function here
+      } catch (e) {
+        console.error('[Analytics] Error during execution:', e);
+      } finally {
+        runCount++;
+        scheduleAnalytics(); // Recursively schedule the next run
+      }
+    }, nextWaitMs);
+  };
+
+  // Start the scheduler
+  scheduleAnalytics();
   // Phase 15: Structural Graceful Shutdown Framework
   const gracefulShutdown = async (signal: string) => {
     console.log(`\n🛑 Received ${signal}. Initiating Global Shutdown Sequence...`);
