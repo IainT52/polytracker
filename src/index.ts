@@ -36,8 +36,8 @@ async function bootstrap() {
     if (process.env.TELEGRAM_BOT_TOKEN) bot.stop(signal);
 
     // 2. Safely close WebSocket connections
-    const { stopLiveStream } = await import('./services/liveStreamEngine');
-    stopLiveStream();
+    const { closeWebSocket } = await import('./services/realtimeListener');
+    closeWebSocket();
 
     // 3. Signal the polling Scraper to break chunks and stop loops
     const { signalScraperShutdown } = await import('./services/historicalScraper');

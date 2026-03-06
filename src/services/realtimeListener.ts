@@ -8,16 +8,40 @@ import { processTradeForFilter } from './filterService';
 let ws: WebSocket | null = null;
 const SUBSCRIBED_MARKETS = new Set<string>();
 
+let heartbeatTimeout: NodeJS.Timeout | null = null;
+
+const heartbeat = () => {
+  if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+  heartbeatTimeout = setTimeout(() => {
+    console.warn('[WS] Heartbeat timeout. Terminating connection...');
+    ws?.terminate();
+  }, 35000);
+};
+
+export function closeWebSocket() {
+  if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+  if (ws) {
+    console.log('[WS] Gracefully terminating WebSocket connection...');
+    ws.terminate();
+    ws = null;
+  }
+}
+
 export function connectWebSocket() {
   console.log('[WS] Connecting to Polymarket CLOB...');
   ws = new WebSocket(CLOB_WS_URL);
 
   ws.on('open', () => {
     console.log('[WS] Connected successfully.');
+    heartbeat();
     // We will dynamically subscribe to markets here as we discover them
   });
 
+  ws.on('ping', heartbeat);
+  ws.on('pong', heartbeat);
+
   ws.on('message', async (data) => {
+    heartbeat();
     try {
       const message = JSON.parse(data.toString());
 
@@ -31,6 +55,7 @@ export function connectWebSocket() {
   });
 
   ws.on('close', () => {
+    if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
     console.log('[WS] Connection closed. Reconnecting in 5s...');
     setTimeout(connectWebSocket, 5000);
   });
@@ -79,7 +104,7 @@ async function handleLiveTrade(tradeData: any) {
   await db.insert(trades).values({
     walletId: wallet.id,
     marketId: market.id,
-    outcomeIndex: tradeData.side === 'BUY' ? 0 : 1, // Simplified assumption
+    outcomeIndex: tradeData.asset_id === market.conditionId ? 0 : 1, // Properly maps the specific token being bought/sold
     action: tradeData.side,
     price: parseFloat(tradeData.price),
     shares: parseFloat(tradeData.size),

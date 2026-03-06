@@ -67,7 +67,7 @@ export async function scrapeHistoricalData() {
           if (isValid) {
             return {
               marketId: market.id,
-              outcomeIndex: 0,
+              outcomeIndex: tradeData.outcome || 0, // TODO: map the condition ID tokens to actual asset IDs
               action: tradeData.side,
               price: parseFloat(tradeData.price),
               shares: parseFloat(tradeData.size),
