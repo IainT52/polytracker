@@ -70,8 +70,7 @@ export async function constructAndSignLimitSellOrder(privateKey: string, clobTok
 /**
  * Real API fetcher utilizing p-limit backoff utility
  */
-export async function fetchL2OrderBook(marketId: number, outcomeIndex: number): Promise<OrderBook> {
-  const clobTokenId = `MOCK_CLOB_TOKEN_${marketId}_${outcomeIndex}`;
+export async function fetchL2OrderBook(clobTokenId: string): Promise<OrderBook> {
   try {
     const url = `${CLOB_API_URL}/book?token_id=${clobTokenId}`;
     const data = await fetchWithRetry(url);
@@ -145,7 +144,14 @@ async function processPositions(positions: any[], isPaper: boolean, configMap: M
       continue;
     }
 
-    const orderBook = await fetchL2OrderBook(market.id, pos.outcomeIndex);
+    const tokenIds = JSON.parse(market.clobTokenIds || '[]');
+    const actualTokenId = tokenIds[pos.outcomeIndex];
+    if (!actualTokenId) {
+      console.log(`[PositionManager] Cannot resolve actual Token ID for pos ${pos.id}`);
+      continue;
+    }
+
+    const orderBook = await fetchL2OrderBook(actualTokenId);
     if (orderBook.bids.length === 0) {
       console.log(`[PositionManager] Orderbook empty or fetch failed for pos ${pos.id}`);
       continue;
@@ -195,7 +201,7 @@ async function processPositions(positions: any[], isPaper: boolean, configMap: M
 
           await constructAndSignLimitSellOrder(
             privateKey,
-            `MOCK_CLOB_TOKEN_${market.id}_${pos.outcomeIndex}`,
+            actualTokenId,
             sharesNum,
             limitPrice
           );

@@ -1,9 +1,10 @@
 import { ethers } from 'ethers';
 import { db } from '../db';
-import { users, autoTradeConfigs, userPositions, paperPositions, walletCorrelations } from '../db/schema';
+import { users, autoTradeConfigs, userPositions, paperPositions, walletCorrelations, markets } from '../db/schema';
 import { eq, inArray, and, or } from 'drizzle-orm';
 import { validateTradeSafety, OrderBook } from './safetyFilters';
 import { decryptKey } from '../bot/encryption';
+import { fetchL2OrderBook } from './positionManager';
 
 // EIP-712 Domain for Polymarket CTF Exchange
 const domain = {
@@ -34,16 +35,16 @@ const types = {
 export async function constructAndSignMockOrder(privateKey: string, clobTokenId: string, shares: number, price: number) {
   const wallet = new ethers.Wallet(privateKey);
 
-  // Calculate amounts (simplified for test)
-  const takerAmountStr = ethers.parseUnits((shares * price).toFixed(6), 6).toString(); // USDC spent (6 decimals)
-  const makerAmountStr = ethers.parseUnits(shares.toString(), 6).toString(); // Conditional Tokens expected
+  // Calculate amounts: For a BUY order, Maker (user) spends USDC and Takes Conditional Tokens
+  const makerAmountStr = ethers.parseUnits((shares * price).toFixed(6), 6).toString(); // USDC spent (6 decimals)
+  const takerAmountStr = ethers.parseUnits(shares.toString(), 6).toString(); // Conditional Tokens expected
 
   const order = {
     salt: Math.floor(Math.random() * 1000000000),
     maker: wallet.address,
     signer: wallet.address,
     taker: '0x0000000000000000000000000000000000000000',
-    tokenId: clobTokenId, // Hardcoded for test
+    tokenId: clobTokenId, 
     makerAmount: makerAmountStr,
     takerAmount: takerAmountStr,
     expiration: Math.floor(Date.now() / 1000) + 3600, // +1 hour
@@ -82,6 +83,15 @@ export async function executeAutoTrades(marketId: number, outcomeIndex: number, 
     return;
   }
 
+  // Fetch true Token ID for the trade
+  const market = await db.select().from(markets).where(eq(markets.id, marketId)).get();
+  const tokenIds = JSON.parse(market?.clobTokenIds || '[]');
+  const actualTokenId = tokenIds[outcomeIndex];
+  if (!actualTokenId) {
+    console.log(`[AutoTrade] Aborted: Token ID could not be resolved for market ${marketId}`);
+    return;
+  }
+
   // 1b. Check for Historical Syndicates (Phase 12)
   let isSyndicateActive = false;
   if (involvedWallets.length > 1) {
@@ -100,16 +110,8 @@ export async function executeAutoTrades(marketId: number, outcomeIndex: number, 
     }
   }
 
-  // 2. Mock Level 2 Order Book retrieval (centered around the alpha price)
-  // In production, this would be a fetch() to the Polymarket CLOB API `GET / book`
-  const mockOrderBook: OrderBook = {
-    bids: [{ price: alphaPrice - 0.01, size: 5000 }],
-    asks: [
-      { price: alphaPrice, size: 50 },
-      { price: alphaPrice + 0.01, size: 200 },
-      { price: alphaPrice + 0.02, size: 1000 }
-    ]
-  };
+  // 2. Fetch LIVE Level 2 Order Book for precise slippage simulation
+  const liveOrderBook = await fetchL2OrderBook(actualTokenId);
 
   // 3. Process each user config
   for (const row of enabledConfigs) {
@@ -143,7 +145,7 @@ export async function executeAutoTrades(marketId: number, outcomeIndex: number, 
 
     // Safety check BEFORE signing
     const safetyCheck = validateTradeSafety(
-      mockOrderBook,
+      liveOrderBook,
       alphaPrice,
       betSizeNum,
       config.maxSpreadBps,
@@ -177,7 +179,7 @@ export async function executeAutoTrades(marketId: number, outcomeIndex: number, 
         // We pass the simulated execution price heavily mocked clob token 
         await constructAndSignMockOrder(
           privateKey,
-          `MOCK_CLOB_TOKEN_${marketId}_${outcomeIndex} `,
+          actualTokenId,
           safetyCheck.expectedShares || 0,
           safetyCheck.executionPrice || alphaPrice
         );
