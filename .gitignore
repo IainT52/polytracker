@@ -1,2 +1,16 @@
 node_modules
-\n# Environments\n.env\n.env.local\n\n# Databases\n*.db\ndev.db\n\n# Logs\n*.log\n
+# Environments
+.env.local
+.env.*.local
+
+# Database
+dev.db
+dev.db-shm
+dev.db-wal
+
+# Databases
+*.db
+dev.db
+
+# Logs
+*.log
