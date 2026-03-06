@@ -28,18 +28,40 @@ async function bootstrap() {
   }
 
 
+  // Phase 15: Structural Graceful Shutdown Framework
+  const gracefulShutdown = async (signal: string) => {
+    console.log(`\n🛑 Received ${signal}. Initiating Global Shutdown Sequence...`);
 
-  // Handle graceful shutdown
-  process.once('SIGINT', () => {
-    console.log('Stopping...');
-    if (process.env.TELEGRAM_BOT_TOKEN) bot.stop('SIGINT');
+    // 1. Stop Telegram Interface
+    if (process.env.TELEGRAM_BOT_TOKEN) bot.stop(signal);
+
+    // 2. Safely close WebSocket connections
+    const { stopLiveStream } = await import('./services/liveStreamEngine');
+    stopLiveStream();
+
+    // 3. Signal the polling Scraper to break chunks and stop loops
+    const { signalScraperShutdown } = await import('./services/historicalScraper');
+    signalScraperShutdown();
+
+    // 4. Wait for any active Drizzle asynchronous Promise.allSettled chunks to resolve globally
+    console.log('⏳ Waiting 3 seconds for active executing batch inserts to finish...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // 5. Explicitly disconnect the Drizzle client SQLite pool connection
+    console.log('🔌 Shutting down Native Database Pool...');
+    try {
+      const { client } = await import('./db/index');
+      client.close();
+    } catch (err) {
+      console.warn('⚠️ Non-fatal error while closing DB pool:', err);
+    }
+
+    console.log('✅ Graceful Shutdown Complete. Have a nice day.');
     process.exit(0);
-  });
-  process.once('SIGTERM', () => {
-    console.log('Stopping...');
-    if (process.env.TELEGRAM_BOT_TOKEN) bot.stop('SIGTERM');
-    process.exit(0);
-  });
+  };
+
+  process.once('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
 }
 
 bootstrap().catch(console.error);

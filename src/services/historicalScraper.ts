@@ -5,6 +5,12 @@ import { eq, inArray } from 'drizzle-orm';
 import { processTradeForFilter } from './filterService';
 import pLimit from 'p-limit';
 
+export let isShuttingDown = false;
+export function signalScraperShutdown() {
+  console.log('[Scraper] Shutdown signal received. Halting new ingestion intervals...');
+  isShuttingDown = true;
+}
+
 export async function scrapeHistoricalData() {
   console.log('[Scraper] Starting Phase 10 Deep Historical Scrape with Controlled Concurrency...');
 
@@ -18,6 +24,7 @@ export async function scrapeHistoricalData() {
   const marketConcurrencyLimit = pLimit(5);
 
   const scrapeMarket = async (marketData: any) => {
+    if (isShuttingDown) return;
     try {
       // 2. Insert or update market
       let market = await db.select().from(markets).where(eq(markets.conditionId, marketData.conditionId)).get();
@@ -45,16 +52,20 @@ export async function scrapeHistoricalData() {
       const validTradesToInsert: any[] = [];
       const uniqueWalletsFound = new Set<string>();
 
-      // Phase 14: Process Filters in Concurrent Chunks of 500
+      // Phase 15: Process Filters using Promise.allSettled for isolated resilience
       const PROCESS_CHUNK_SIZE = 500;
       for (let i = 0; i < tradesList.length; i += PROCESS_CHUNK_SIZE) {
+        if (isShuttingDown) {
+          console.log('[Scraper][Worker] Aborting valid ingestion loop due to shutdown.');
+          break;
+        }
+
         const chunk = tradesList.slice(i, i + PROCESS_CHUNK_SIZE);
 
-        await Promise.all(chunk.map(async (tradeData: any) => {
+        const results = await Promise.allSettled(chunk.map(async (tradeData: any) => {
           const isValid = await processTradeForFilter(tradeData, true);
           if (isValid) {
-            uniqueWalletsFound.add(tradeData.taker);
-            validTradesToInsert.push({
+            return {
               marketId: market.id,
               outcomeIndex: 0,
               action: tradeData.side,
@@ -63,9 +74,20 @@ export async function scrapeHistoricalData() {
               timestamp: new Date(parseInt(tradeData.timestamp) * 1000),
               transactionHash: tradeData.transactionHash,
               _tempWalletAddr: tradeData.taker
-            });
+            };
           }
+          return null;
         }));
+
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value) {
+            uniqueWalletsFound.add(result.value._tempWalletAddr);
+            validTradesToInsert.push(result.value);
+          } else if (result.status === 'rejected') {
+            // Silently absorb specific provider timeouts without blowing up the batch
+            console.warn(`[Scraper][Worker] Trade validation rejected:`, result.reason?.message || result.reason);
+          }
+        }
       }
 
       if (validTradesToInsert.length === 0) return;
