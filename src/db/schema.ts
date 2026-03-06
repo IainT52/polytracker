@@ -36,6 +36,7 @@ export const markets = sqliteTable('markets', {
   question: text('question').notNull(),
   description: text('description'),
   outcomes: text('outcomes').notNull(), // JSON stringified array e.g. '["Yes", "No"]'
+  clobTokenIds: text('clob_token_ids').notNull().default('[]'),
   resolved: integer('resolved', { mode: 'boolean' }).default(false).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(new Date()),

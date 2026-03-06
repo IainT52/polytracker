@@ -51,6 +51,7 @@ export interface MarketMetadata {
   question: string;
   description: string;
   outcomes: string[];
+  clobTokenIds: string[];
   active: boolean;
   closed: boolean;
 }
@@ -65,6 +66,7 @@ export interface TradeData {
   side: 'BUY' | 'SELL';
   timestamp: string;
   market?: string;
+  asset_id?: string;
 }
 
 /**
@@ -85,6 +87,7 @@ export async function fetchActiveMarkets(limit = 100, offset = 0): Promise<Marke
           question: m.question,
           description: m.description,
           outcomes: JSON.parse(m.outcomes || '[]'),
+          clobTokenIds: m.clobTokenIds || m.tokens?.map((t: any) => t.token_id) || [],
           active: m.active,
           closed: m.closed,
         });
@@ -143,7 +146,8 @@ export async function fetchMarketTrades(conditionId: string, maxTrades = 20000):
         size: data.size.toString(),
         side: data.side as 'BUY' | 'SELL',
         timestamp: data.timestamp.toString(),
-        market: conditionId
+        market: conditionId,
+        asset_id: data.asset_id
       });
     }
 

@@ -181,8 +181,8 @@ async function processPositions(positions: any[], isPaper: boolean, configMap: M
         await db.update(paperPositions)
           .set({
             status: exitType,
-            resolvedPrice: avgPrice.toString(),
-            realizedPnL: realizedPnLNum.toFixed(2)
+            resolvedPrice: avgPrice,
+            realizedPnL: Number(realizedPnLNum.toFixed(2))
           })
           .where(eq(paperPositions.id, pos.id));
       } else {

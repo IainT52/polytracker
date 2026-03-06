@@ -164,9 +164,9 @@ export async function executeAutoTrades(marketId: number, outcomeIndex: number, 
           userId: user.id,
           marketId: marketId,
           outcomeIndex: outcomeIndex,
-          buyPrice: (safetyCheck.executionPrice || alphaPrice).toString(),
-          shares: (safetyCheck.expectedShares || 0).toString(),
-          totalCost: betSizeNum.toFixed(2),
+          buyPrice: safetyCheck.executionPrice || alphaPrice,
+          shares: safetyCheck.expectedShares || 0,
+          totalCost: Number(betSizeNum.toFixed(2)),
           status: 'PAPER_OPEN'
         });
         console.log(`[AutoTrade] SUCCESS: Paper Trade Logged for ${user.telegramId}.`);
@@ -187,9 +187,9 @@ export async function executeAutoTrades(marketId: number, outcomeIndex: number, 
           userId: user.id,
           marketId: marketId,
           outcomeIndex: outcomeIndex,
-          buyPrice: (safetyCheck.executionPrice || alphaPrice).toString(),
-          shares: (safetyCheck.expectedShares || 0).toString(),
-          totalCost: betSizeNum.toFixed(2),
+          buyPrice: safetyCheck.executionPrice || alphaPrice,
+          shares: safetyCheck.expectedShares || 0,
+          totalCost: Number(betSizeNum.toFixed(2)),
           status: 'FILLED (AUTO)' // For testing
         });
 

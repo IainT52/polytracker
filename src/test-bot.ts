@@ -24,9 +24,10 @@ async function verifyBot() {
     'BUY YES',
     0.65,
     [
-      { address: '0x1A2B3c4d5e6f7g8h9i0j', grade: 'A' },
-      { address: '0x99998888777766665555', grade: 'B' }
-    ]
+      { address: '0x1A2B3c4d5e6f7g8h9i0j', grade: 'A', recentRoi30d: 0 },
+      { address: '0x99998888777766665555', grade: 'B', recentRoi30d: 0 }
+    ],
+    2
   );
 
   console.log('\n[Test] Phase 4 Complete. Bot instance initialized and broadcast loop validated.');

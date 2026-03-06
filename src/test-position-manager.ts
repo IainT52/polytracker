@@ -29,9 +29,9 @@ async function runTest() {
     userId: user.id,
     marketId: market.id,
     outcomeIndex: 0,
-    buyPrice: '0.40',
-    shares: '100', // Total Cost = $40
-    totalCost: '40',
+    buyPrice: 0.40,
+    shares: 100, // Total Cost = $40
+    totalCost: 40,
     status: 'PAPER_OPEN'
   }).returning();
 
@@ -68,7 +68,7 @@ async function runTest() {
   console.log(`Resolved Price: ${updatedPos?.resolvedPrice}`);
   console.log(`Realized PnL: ${updatedPos?.realizedPnL}`);
 
-  if (updatedPos?.status === 'SOLD_TP' && updatedPos?.realizedPnL === '20.00') {
+  if (updatedPos?.status === 'SOLD_TP' && Math.abs((updatedPos?.realizedPnL || 0) - 20.00) < 0.01) {
     console.log('✅ TEST PASSED: Successfully identified +50% gain, simulated TP, and updated DB.');
   } else {
     console.log('❌ TEST FAILED');

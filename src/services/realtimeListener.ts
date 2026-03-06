@@ -101,10 +101,12 @@ async function handleLiveTrade(tradeData: any) {
   }
 
   // Insert Trade
+  const tokenIds = JSON.parse(market.clobTokenIds || '[]');
+
   await db.insert(trades).values({
     walletId: wallet.id,
     marketId: market.id,
-    outcomeIndex: tradeData.asset_id === market.conditionId ? 0 : 1, // Properly maps the specific token being bought/sold
+    outcomeIndex: tokenIds.indexOf(tradeData.asset_id) !== -1 ? tokenIds.indexOf(tradeData.asset_id) : 0, 
     action: tradeData.side,
     price: parseFloat(tradeData.price),
     shares: parseFloat(tradeData.size),

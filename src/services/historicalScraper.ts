@@ -35,6 +35,7 @@ export async function scrapeHistoricalData() {
           question: marketData.question,
           description: marketData.description,
           outcomes: JSON.stringify(marketData.outcomes),
+          clobTokenIds: JSON.stringify(marketData.clobTokenIds || []),
           resolved: marketData.closed || !marketData.active,
         }).returning();
       } else {
@@ -51,6 +52,7 @@ export async function scrapeHistoricalData() {
       // 4. Batch Processing to avoid N+1 SQLite connection freezes
       const validTradesToInsert: any[] = [];
       const uniqueWalletsFound = new Set<string>();
+      const tokenIds = JSON.parse(market.clobTokenIds || '[]');
 
       // Phase 15: Process Filters using Promise.allSettled for isolated resilience
       const PROCESS_CHUNK_SIZE = 500;
@@ -67,7 +69,7 @@ export async function scrapeHistoricalData() {
           if (isValid) {
             return {
               marketId: market.id,
-              outcomeIndex: tradeData.outcome || 0, // TODO: map the condition ID tokens to actual asset IDs
+              outcomeIndex: tokenIds.indexOf(tradeData.asset_id) !== -1 ? tokenIds.indexOf(tradeData.asset_id) : (tradeData.outcome || 0),
               action: tradeData.side,
               price: parseFloat(tradeData.price),
               shares: parseFloat(tradeData.size),
