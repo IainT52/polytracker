@@ -1,5 +1,29 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
+
+// Phase 14: Custom Resize Observer to bypass Airlock NPM blocks
+function useResizeObserver<T extends HTMLElement>() {
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const ref = useRef<T>(null);
+
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const observeTarget = ref.current;
+    const resizeObserver = new ResizeObserver((entries) => {
+      entries.forEach((entry) => {
+        setDimensions({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        });
+      });
+    });
+
+    resizeObserver.observe(observeTarget);
+    return () => resizeObserver.unobserve(observeTarget);
+  }, []);
+
+  return [ref, dimensions] as const;
+}
 
 interface SyndicateGraphProps {
   apiUrl: string;
@@ -10,6 +34,7 @@ export const SyndicateGraph: React.FC<SyndicateGraphProps> = ({ apiUrl }) => {
   const [loading, setLoading] = useState(true);
   const [selectedNode, setSelectedNode] = useState<any | null>(null);
   const fgRef = useRef<any>(null);
+  const [containerRef, dimensions] = useResizeObserver<HTMLDivElement>();
 
   useEffect(() => {
     if (fgRef.current) {
@@ -54,11 +79,11 @@ export const SyndicateGraph: React.FC<SyndicateGraphProps> = ({ apiUrl }) => {
   }
 
   return (
-    <div className="relative h-[600px] w-full rounded-xl overflow-hidden border border-gray-800 bg-gray-950 flex flex-col items-center shadow-inner">
+    <div ref={containerRef} className="relative h-[600px] w-full flex-1 rounded-xl overflow-hidden border border-gray-800 bg-gray-950 flex flex-col items-center shadow-inner">
       <ForceGraph2D
         ref={fgRef}
-        width={800} // adjust based on container if needed, using fixed or relative later
-        height={600}
+        width={dimensions.width}
+        height={dimensions.height}
         backgroundColor="#030712"
         graphData={graphData}
         nodeLabel="id"

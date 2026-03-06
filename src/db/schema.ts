@@ -65,9 +65,9 @@ export const userPositions = sqliteTable('user_positions', {
   userId: integer('user_id').notNull().references(() => users.id),
   marketId: integer('market_id').notNull().references(() => markets.id),
   outcomeIndex: integer('outcome_index').notNull(),
-  buyPrice: text('buy_price').notNull(),
-  shares: text('shares').notNull(),
-  totalCost: text('total_cost').notNull(),
+  buyPrice: real('buy_price').notNull(),
+  shares: real('shares').notNull(),
+  totalCost: real('total_cost').notNull(),
   timestamp: integer('timestamp', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   status: text('status').notNull().default('OPEN'), // OPEN, SOLD_TP, SOLD_SL
   orderId: text('order_id'),
@@ -102,11 +102,11 @@ export const paperPositions = sqliteTable('paper_positions', {
   userId: integer('user_id').notNull().references(() => users.id),
   marketId: integer('market_id').notNull().references(() => markets.id),
   outcomeIndex: integer('outcome_index').notNull(),
-  buyPrice: text('buy_price').notNull(),
-  shares: text('shares').notNull(),
-  totalCost: text('total_cost').notNull(),
-  resolvedPrice: text('resolved_price'), // Price when market closed
-  realizedPnL: text('realized_pnl'), // Final PnL
+  buyPrice: real('buy_price').notNull(),
+  shares: real('shares').notNull(),
+  totalCost: real('total_cost').notNull(),
+  resolvedPrice: real('resolved_price'), // Price when market closed
+  realizedPnL: real('realized_pnl'), // Final PnL
   timestamp: integer('timestamp', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
   status: text('status').notNull().default('PAPER_OPEN'), // PAPER_OPEN, PAPER_WON, PAPER_LOST, SOLD_TP, SOLD_SL
 });

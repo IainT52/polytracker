@@ -45,21 +45,27 @@ export async function scrapeHistoricalData() {
       const validTradesToInsert: any[] = [];
       const uniqueWalletsFound = new Set<string>();
 
-      for (const tradeData of tradesList) {
-        const isValid = await processTradeForFilter(tradeData, true);
-        if (isValid) {
-          uniqueWalletsFound.add(tradeData.taker);
-          validTradesToInsert.push({
-            marketId: market.id,
-            outcomeIndex: 0, // Simplified: data-api gives us specific asset, we need mapping logic later
-            action: tradeData.side,
-            price: parseFloat(tradeData.price),
-            shares: parseFloat(tradeData.size), // Data API uses 'size'
-            timestamp: new Date(parseInt(tradeData.timestamp) * 1000),
-            transactionHash: tradeData.transactionHash,
-            _tempWalletAddr: tradeData.taker
-          });
-        }
+      // Phase 14: Process Filters in Concurrent Chunks of 500
+      const PROCESS_CHUNK_SIZE = 500;
+      for (let i = 0; i < tradesList.length; i += PROCESS_CHUNK_SIZE) {
+        const chunk = tradesList.slice(i, i + PROCESS_CHUNK_SIZE);
+
+        await Promise.all(chunk.map(async (tradeData: any) => {
+          const isValid = await processTradeForFilter(tradeData, true);
+          if (isValid) {
+            uniqueWalletsFound.add(tradeData.taker);
+            validTradesToInsert.push({
+              marketId: market.id,
+              outcomeIndex: 0,
+              action: tradeData.side,
+              price: parseFloat(tradeData.price),
+              shares: parseFloat(tradeData.size),
+              timestamp: new Date(parseInt(tradeData.timestamp) * 1000),
+              transactionHash: tradeData.transactionHash,
+              _tempWalletAddr: tradeData.taker
+            });
+          }
+        }));
       }
 
       if (validTradesToInsert.length === 0) return;
