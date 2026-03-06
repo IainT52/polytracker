@@ -14,6 +14,9 @@ export async function fetchWithRetry(url: string, options: RequestInit = {}, ret
         // Handle Rate Limits specifically
         if (response.status === 429) {
           console.warn(`[API] Rate limited on ${url} (Attempt ${attempt}/${retries}). Backing off...`);
+          if (attempt === retries) {
+            throw new Error(`Rate Limited after ${retries} attempts`);
+          }
           // Exponential backoff: 2s, 4s, 8s
           await wait(1000 * Math.pow(2, attempt));
           continue;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 
 interface SyndicateGraphProps {
@@ -9,6 +9,13 @@ export const SyndicateGraph: React.FC<SyndicateGraphProps> = ({ apiUrl }) => {
   const [graphData, setGraphData] = useState<{ nodes: any[], links: any[] }>({ nodes: [], links: [] });
   const [loading, setLoading] = useState(true);
   const [selectedNode, setSelectedNode] = useState<any | null>(null);
+  const fgRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (fgRef.current) {
+      fgRef.current.d3Force('charge').strength(-200);
+    }
+  }, [graphData]);
 
   useEffect(() => {
     const fetchGraphData = () => {
@@ -43,6 +50,7 @@ export const SyndicateGraph: React.FC<SyndicateGraphProps> = ({ apiUrl }) => {
   return (
     <div className="relative h-[600px] w-full rounded-xl overflow-hidden border border-gray-800 bg-gray-950 flex flex-col items-center shadow-inner">
       <ForceGraph2D
+        ref={fgRef}
         width={800} // adjust based on container if needed, using fixed or relative later
         height={600}
         backgroundColor="#030712"

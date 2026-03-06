@@ -20,6 +20,8 @@ export async function mapSyndicates() {
         JOIN trades t2 
           ON t1.market_id = t2.market_id 
           AND t1.outcome_index = t2.outcome_index
+        INNER JOIN wallets w1 ON t1.wallet_id = w1.address AND w1.grade IN ('A', 'B')
+        INNER JOIN wallets w2 ON t2.wallet_id = w2.address AND w2.grade IN ('A', 'B')
         WHERE 
           t1.wallet_id < t2.wallet_id -- Prevent A->B and B->A duplication & self matches
           AND t1.action = 'BUY' 
@@ -32,13 +34,11 @@ export async function mapSyndicates() {
       )
       INSERT INTO wallet_correlations (wallet_a, wallet_b, co_occurrence_count, last_seen_together)
       SELECT 
-        wA.address,
-        wB.address,
+        sp.wallet_a,
+        sp.wallet_b,
         sp.co_occurrence_count,
         sp.last_seen_together
       FROM SyndicatePairs sp
-      JOIN wallets wA ON wA.id = sp.wallet_a
-      JOIN wallets wB ON wB.id = sp.wallet_b
       WHERE 1=1
       ON CONFLICT(wallet_a, wallet_b) DO UPDATE SET 
         co_occurrence_count = excluded.co_occurrence_count,

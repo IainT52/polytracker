@@ -1,1 +1,2 @@
 node_modules
+\n# Environments\n.env\n.env.local\n\n# Databases\n*.db\ndev.db\n\n# Logs\n*.log\n

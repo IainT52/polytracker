@@ -64,13 +64,28 @@ export async function scrapeHistoricalData() {
 
       if (validTradesToInsert.length === 0) return;
 
-      // 5. Bulk ensure wallets exist
-      for (const address of uniqueWalletsFound) {
-        await db.insert(wallets).values({ address }).onConflictDoNothing({ target: wallets.address });
+      // 5. Bulk ensure wallets exist using chunked array inserts
+      const uniqueWalletAddresses = Array.from(uniqueWalletsFound);
+      const WALLET_CHUNK_SIZE = 500; // max variables 999
+      for (let i = 0; i < uniqueWalletAddresses.length; i += WALLET_CHUNK_SIZE) {
+        const chunk = uniqueWalletAddresses.slice(i, i + WALLET_CHUNK_SIZE).map(address => ({ address }));
+        if (chunk.length > 0) {
+          // Wrapped in pseudo-retry for locked DBs on parallel workers
+          let retries = 3;
+          while (retries > 0) {
+            try {
+              await db.insert(wallets).values(chunk).onConflictDoNothing({ target: wallets.address });
+              break;
+            } catch (err: any) {
+              retries--;
+              if (retries === 0) throw err;
+              await new Promise(res => setTimeout(res, 250 + Math.random() * 500));
+            }
+          }
+        }
       }
 
       // Fetch all needed wallet IDs in a dictionary map cache (ONLY for the ones we discovered)
-      const uniqueWalletAddresses = Array.from(uniqueWalletsFound);
       const dbWallets: any[] = [];
       const MAX_SQLITE_VARIABLES = 900; // Safe limit below 999
 
@@ -87,8 +102,8 @@ export async function scrapeHistoricalData() {
 
       const walletMap = new Map(dbWallets.map(w => [w.address, w.id]));
 
-      // 6. DB Bulk Insert inside Transaction boundary
-      const CHUNK_SIZE = 500;
+      // 6. DB Bulk Insert using Array Inserts inside Transactions
+      const CHUNK_SIZE = 100; // 100 rows * 8 columns = 800 parameters (safe limit < 999)
       for (let i = 0; i < validTradesToInsert.length; i += CHUNK_SIZE) {
         const chunk = validTradesToInsert.slice(i, i + CHUNK_SIZE).map(t => {
           return {
@@ -103,11 +118,21 @@ export async function scrapeHistoricalData() {
           };
         });
 
-        await db.transaction(async (tx) => {
-          for (const t of chunk) {
-            await tx.insert(trades).values(t).onConflictDoNothing({ target: trades.transactionHash });
+        if (chunk.length > 0) {
+          let retries = 3;
+          while (retries > 0) {
+            try {
+              await db.transaction(async (tx) => {
+                await tx.insert(trades).values(chunk).onConflictDoNothing({ target: trades.transactionHash });
+              });
+              break;
+            } catch (err: any) {
+              retries--;
+              if (retries === 0) throw err;
+              await new Promise(res => setTimeout(res, 250 + Math.random() * 500));
+            }
           }
-        });
+        }
       }
 
       totalTradesIngested += validTradesToInsert.length;

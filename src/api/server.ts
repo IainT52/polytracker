@@ -143,26 +143,25 @@ app.post('/api/backtest/:telegramId', async (req, res) => {
     const config = await db.select().from(autoTradeConfigs).where(eq(autoTradeConfigs.userId, user.id)).get();
     if (!config) return res.status(400).json({ error: 'Config missing' });
 
-    // In a full implementation, we would query historical `trades` where grade=A/B to derive Alpha signals.
-    // We are simulating the "Rapid Backtest Engine" injecting mock Historical returns over the requested period.
-    const mockBacktestResults = Array.from({ length: 30 }).map((_, i) => {
-      const isWin = Math.random() > 0.4; // 60% win rate
-      const costAmount = parseFloat(config.fixedBetSizeUsd);
+    // We retrieve the actual paperPositions logged natively by the Engine.
+    const realBacktestResults = await db.select({
+      id: paperPositions.id,
+      question: markets.question,
+      buyPrice: paperPositions.buyPrice,
+      shares: paperPositions.shares,
+      totalCost: paperPositions.totalCost,
+      timestamp: paperPositions.timestamp,
+      status: paperPositions.status,
+      realizedPnL: paperPositions.realizedPnL,
+      resolvedPrice: paperPositions.resolvedPrice
+    })
+      .from(paperPositions)
+      .leftJoin(markets, eq(paperPositions.marketId, markets.id))
+      .where(eq(paperPositions.userId, user.id))
+      .orderBy(desc(paperPositions.timestamp))
+      .all();
 
-      return {
-        id: Math.floor(Math.random() * 1000000),
-        question: `Historical Mock Signal #${i}`,
-        buyPrice: (Math.random() * 0.4 + 0.1).toFixed(3),
-        shares: (costAmount / (Math.random() * 0.4 + 0.1)).toFixed(2),
-        totalCost: config.fixedBetSizeUsd,
-        timestamp: new Date(Date.now() - (i * 86400000)).toISOString(), // Spread over past 30 days
-        status: isWin ? 'PAPER_WON' : 'PAPER_LOST',
-        realizedPnL: isWin ? (costAmount * 0.5).toFixed(2) : `-${costAmount}`, // +50% ROI on win, -100% on loss 
-        resolvedPrice: isWin ? '1.0' : '0.0'
-      };
-    });
-
-    res.json(mockBacktestResults);
+    res.json(realBacktestResults);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal server error' });
@@ -187,15 +186,41 @@ app.get('/api/stats/wallets', async (req, res) => {
 // Get aggregate signal stats (mocked for visualization)
 app.get('/api/stats/signals', async (req, res) => {
   try {
+    const totalSignalsRes = await db.select({ count: sql<number>`COUNT(*)` }).from(paperPositions).get();
+    const totalSignals = totalSignalsRes?.count || 0;
+
+    const winsRes = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(paperPositions)
+      .where(inArray(paperPositions.status, ['PAPER_WON', 'SOLD_TP']))
+      .get();
+
+    const resolvedRes = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(paperPositions)
+      .where(inArray(paperPositions.status, ['PAPER_WON', 'PAPER_LOST', 'SOLD_TP', 'SOLD_SL']))
+      .get();
+
+    const wins = winsRes?.count || 0;
+    const resolved = resolvedRes?.count || 0;
+    const winRate = resolved > 0 ? (wins / resolved) * 100 : 0;
+
+    // Avg ROI
+    const pnlStats = await db.select({
+      totalRealized: sql<number>`SUM(CAST(${paperPositions.realizedPnL} AS REAL))`,
+      totalCost: sql<number>`SUM(CAST(${paperPositions.totalCost} AS REAL))`
+    }).from(paperPositions)
+      .where(inArray(paperPositions.status, ['PAPER_WON', 'PAPER_LOST', 'SOLD_TP', 'SOLD_SL']))
+      .get();
+
+    let avgRoi = 0;
+    if (pnlStats && pnlStats.totalCost > 0) {
+      avgRoi = (pnlStats.totalRealized / pnlStats.totalCost) * 100;
+    }
+
     res.json({
-      totalSignals: 142,
-      winRate: 68.5,
-      avgRoi: 12.4,
-      recentSignals: [
-        { id: 1, market: 'Will ETH hit $4k by April?', win: true, roi: 45.2 },
-        { id: 2, market: 'Will BTC reach $80k?', win: false, roi: -100 },
-        { id: 3, market: 'Federal Reserve Rate Cut?', win: true, roi: 18.5 },
-      ]
+      totalSignals,
+      winRate: parseFloat(winRate.toFixed(1)),
+      avgRoi: parseFloat(avgRoi.toFixed(1)),
+      recentSignals: []
     });
   } catch (error) {
     console.error(error);
@@ -242,10 +267,10 @@ app.get('/api/stats/syndicates', async (req, res) => {
 // Phase 12.1: Advanced Graph API
 app.get('/api/syndicates/graph', async (req, res) => {
   try {
-    // 1. Get raw correlations >= 3
+    // 1. Get raw correlations >= 4 (bumped noise threshold)
     const correlations = await db.select()
       .from(walletCorrelations)
-      .where(gte(walletCorrelations.coOccurrenceCount, 3))
+      .where(gte(walletCorrelations.coOccurrenceCount, 4))
       .orderBy(desc(walletCorrelations.coOccurrenceCount))
       .all();
 
@@ -279,21 +304,29 @@ app.get('/api/syndicates/graph', async (req, res) => {
     const links: any[] = [];
 
     walletMap.forEach((data, address) => {
+      // STRICT FILTER: Ignore any nodes that are unrated (U) or null
+      if (data.grade !== 'A' && data.grade !== 'B') return;
+
       nodes.push({
         id: address,
-        group: data.grade || 'U', // U for unrated if null
+        group: data.grade, 
         val: data.recentRoi30d ? Math.max(1, data.recentRoi30d) : 1, // Cap small values so nodes don't vanish
         winRate: data.winRate
       });
     });
 
     correlations.forEach(c => {
+      // Only draw links if BOTH wallets passed the grade filter
       if (walletMap.has(c.walletA) && walletMap.has(c.walletB)) {
-        links.push({
-          source: c.walletA,
-          target: c.walletB,
-          value: c.coOccurrenceCount
-        });
+        const gradeA = walletMap.get(c.walletA).grade;
+        const gradeB = walletMap.get(c.walletB).grade;
+        if ((gradeA === 'A' || gradeA === 'B') && (gradeB === 'A' || gradeB === 'B')) {
+          links.push({
+            source: c.walletA,
+            target: c.walletB,
+            value: c.coOccurrenceCount
+          });
+        }
       }
     });
 
