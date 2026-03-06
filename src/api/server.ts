@@ -228,10 +228,11 @@ app.get('/api/stats/signals', async (req, res) => {
   }
 });
 
-// Get Ingestion Stats 
-app.get('/api/stats/ingestion', async (req, res) => {
+// Phase 13: Cache heavy SQL grouping to prevent Event Loop/SQLite starvation
+let cachedIngestionStats: any[] = [];
+setInterval(async () => {
   try {
-    const stats = await db.select({
+    cachedIngestionStats = await db.select({
       marketId: markets.conditionId,
       question: markets.question,
       tradeCount: sql<number>`COUNT(${trades.id})`.mapWith(Number)
@@ -241,8 +242,15 @@ app.get('/api/stats/ingestion', async (req, res) => {
       .groupBy(trades.marketId)
       .orderBy(desc(sql`COUNT(${trades.id})`))
       .all();
+  } catch (error) {
+    console.error('[API] Background Caching Failed:', error);
+  }
+}, 30000);
 
-    res.json(stats);
+// Get Ingestion Stats 
+app.get('/api/stats/ingestion', async (req, res) => {
+  try {
+    res.json(cachedIngestionStats);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal server error' });

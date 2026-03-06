@@ -24,6 +24,10 @@ export const wallets = sqliteTable('wallets', {
   isBot: integer('is_bot', { mode: 'boolean' }).default(false).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(new Date()),
+}, (table) => {
+  return {
+    gradeIdx: index('grade_idx').on(table.grade)
+  }
 });
 
 export const markets = sqliteTable('markets', {
@@ -49,7 +53,9 @@ export const trades = sqliteTable('trades', {
   transactionHash: text('transaction_hash').unique(),
 }, (table) => {
   return {
-    marketIdIdx: index('market_id_idx').on(table.marketId)
+    marketIdIdx: index('market_id_idx').on(table.marketId),
+    walletIdIdx: index('wallet_id_idx').on(table.walletId),
+    timestampIdx: index('timestamp_idx').on(table.timestamp)
   }
 });
 

@@ -118,3 +118,29 @@ function triggerAlphaSignal(marketId: number, outcomeIndex: number, walletsInvol
     console.error('[SignalEngine] Error triggering auto trades:', e);
   });
 }
+
+// --- Phase 13: Global Garbage Collection for Alpha Engine Memory ---
+// Prevents Core V8 OOM crashes by actively seeking out and deleting dormant market memory keys
+setInterval(() => {
+  const now = Date.now();
+  for (const [marketId, marketMemory] of recentAlertMemory.entries()) {
+    let activeEntriesCount = 0;
+
+    for (const [outcomeIndex, outcomeMemory] of marketMemory.entries()) {
+      for (let i = outcomeMemory.length - 1; i >= 0; i--) {
+        if (now - outcomeMemory[i].timestamp.getTime() > WINDOW_15_MINUTES) {
+          outcomeMemory.splice(i, 1);
+        }
+      }
+      activeEntriesCount += outcomeMemory.length;
+      if (outcomeMemory.length === 0) {
+        marketMemory.delete(outcomeIndex);
+      }
+    }
+
+    // If the entire market dictionary is dormant, obliterate it from RAM entirely
+    if (activeEntriesCount === 0) {
+      recentAlertMemory.delete(marketId);
+    }
+  }
+}, 5 * 60 * 1000); // Purge every 5 minutes

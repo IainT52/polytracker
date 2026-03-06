@@ -23,7 +23,13 @@ export const SyndicateGraph: React.FC<SyndicateGraphProps> = ({ apiUrl }) => {
         .then(res => res.json())
         .then(data => {
           if (data && data.nodes) {
-            setGraphData(data);
+            setGraphData(prev => {
+              // Phase 13: Prevent physics explosion by only setting state if data actually changed
+              if (JSON.stringify(data) !== JSON.stringify(prev)) {
+                return data;
+              }
+              return prev;
+            });
           }
         })
         .catch(console.error)
