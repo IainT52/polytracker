@@ -251,9 +251,12 @@ export async function autoBackfillTopMarkets(limit: number) {
   console.log(`[Subgraph] Auto-Targeting Top ${limit} Markets by Volume...`);
   const topMarkets = await db.select().from(markets).orderBy(desc(markets.volume)).limit(limit).all();
 
+  let current = 1;
+  const total = topMarkets.length;
   for (const market of topMarkets) {
-    console.log(`\n=> Preparing to backfill: ${market.question} (Vol: $${market.volume?.toLocaleString()})`);
+    console.log(`\n=> Preparing to backfill [${current}/${total}]: ${market.question} (Vol: $${market.volume?.toLocaleString()})`);
     await backfillMarket(market.conditionId);
+    current++;
   }
 }
 
@@ -271,9 +274,12 @@ export async function autoBackfillKeywordMarkets(keyword: string, limit: number)
     return;
   }
 
+  let current = 1;
+  const total = matchedMarkets.length;
   for (const market of matchedMarkets) {
-    console.log(`\n=> Preparing to backfill: ${market.question} (Vol: $${market.volume?.toLocaleString()})`);
+    console.log(`\n=> Preparing to backfill [${current}/${total}]: ${market.question} (Vol: $${market.volume?.toLocaleString()})`);
     await backfillMarket(market.conditionId);
+    current++;
   }
 }
 
