@@ -52,6 +52,9 @@ export interface MarketMetadata {
   description: string;
   outcomes: string[];
   clobTokenIds: string[];
+  volume: number;
+  endDate: string;
+  icon: string;
   active: boolean;
   closed: boolean;
 }
@@ -73,7 +76,7 @@ export interface TradeData {
  * Fetch top active markets from Gamma API
  * Sorted globally by volume to target high-liquidity events
  */
-export async function fetchActiveMarkets(limit = 100, offset = 0): Promise<MarketMetadata[]> {
+export async function fetchActiveMarkets(limit = 1000, offset = 0): Promise<MarketMetadata[]> {
   const url = `${GAMMA_API_URL}/events?active=true&closed=false&limit=${limit}&offset=${offset}&order=volume24hr&ascending=false`;
   const events = await fetchWithRetry(url);
 
@@ -88,6 +91,9 @@ export async function fetchActiveMarkets(limit = 100, offset = 0): Promise<Marke
           description: m.description,
           outcomes: JSON.parse(m.outcomes || '[]'),
           clobTokenIds: m.clobTokenIds || m.tokens?.map((t: any) => t.token_id) || [],
+          volume: parseFloat(m.volume || '0'),
+          endDate: m.endDate || '',
+          icon: m.icon || '',
           active: m.active,
           closed: m.closed,
         });

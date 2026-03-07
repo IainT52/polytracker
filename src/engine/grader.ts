@@ -129,6 +129,9 @@ export async function runWalletGrader() {
       winRate,
       recentRoi30d,
       recentWinRate30d,
+      totalTrades,
+      totalVolume,
+      realizedPnL,
       lastAnalyzed: new Date(),
     });
   }
@@ -148,6 +151,9 @@ export async function runWalletGrader() {
             winRate: update.winRate,
             recentRoi30d: update.recentRoi30d,
             recentWinRate30d: update.recentWinRate30d,
+            totalTrades: update.totalTrades,
+            totalVolume: update.totalVolume,
+            realizedPnL: update.realizedPnL,
             lastAnalyzed: update.lastAnalyzed
           })
           .where(eq(wallets.id, update.id));

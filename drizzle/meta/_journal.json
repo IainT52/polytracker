@@ -15,6 +15,13 @@
       "when": 1772832502026,
       "tag": "0001_melted_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1772843594308,
+      "tag": "0002_previous_gorilla_man",
+      "breakpoints": true
     }
   ]
 }

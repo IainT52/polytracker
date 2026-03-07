@@ -1,7 +1,7 @@
 import { fetchActiveMarkets, fetchMarketTrades } from './api';
 import { db } from '../db';
 import { markets, trades, wallets } from '../db/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, desc } from 'drizzle-orm';
 import { processTradeForFilter } from './filterService';
 import { subscribeToMarket } from './realtimeListener';
 import pLimit from 'p-limit';
@@ -13,18 +13,21 @@ export function signalScraperShutdown() {
 }
 
 export async function scrapeHistoricalData() {
-  console.log('[Scraper] Starting Phase 10 Deep Historical Scrape with Controlled Concurrency...');
+  console.log('[Scraper] Starting Phase 16 Continuous Delta Engine...');
 
-  // 1. Fetch Top 100 active markets globally sorted by Volume
-  const activeMarkets = await fetchActiveMarkets(100);
-  console.log(`[Scraper] Found ${activeMarkets.length} high-liquidity markets to process.`);
+  while (!isShuttingDown) {
+    try {
+      // 1. Fetch Top 1000 active markets globally sorted by Volume
+      const activeMarkets = await fetchActiveMarkets();
+      const qualifiedMarkets = activeMarkets.filter(m => m.volume >= 50000);
+      console.log(`[Scraper] Found ${qualifiedMarkets.length} high-liquidity markets (>$50k) to process.`);
 
-  let totalTradesIngested = 0;
+      let totalTradesIngested = 0;
 
-  // 2. Concurrency Limiter: Analyze 5 markets simultaneously
-  const marketConcurrencyLimit = pLimit(5);
+      // 2. Concurrency Limiter: Analyze 5 markets simultaneously
+      const marketConcurrencyLimit = pLimit(5);
 
-  const scrapeMarket = async (marketData: any) => {
+      const scrapeMarket = async (marketData: any) => {
     if (isShuttingDown) return;
     try {
       // 2. Insert or update market
@@ -37,11 +40,19 @@ export async function scrapeHistoricalData() {
           description: marketData.description,
           outcomes: JSON.stringify(marketData.outcomes),
           clobTokenIds: JSON.stringify(marketData.clobTokenIds || []),
+          volume: marketData.volume,
+          endDate: marketData.endDate,
+          icon: marketData.icon,
           resolved: marketData.closed || !marketData.active,
         }).returning();
       } else {
         await db.update(markets)
-          .set({ resolved: marketData.closed || !marketData.active })
+          .set({
+            resolved: marketData.closed || !marketData.active,
+            volume: marketData.volume,
+            endDate: marketData.endDate,
+            icon: marketData.icon
+          })
           .where(eq(markets.conditionId, marketData.conditionId));
       }
 
@@ -53,10 +64,16 @@ export async function scrapeHistoricalData() {
       const tradesList = await fetchMarketTrades(marketData.conditionId, 20000);
       console.log(`[Scraper][Worker] Fetched ${tradesList.length} historical trades for ${marketData.conditionId.substring(0, 8)}. Filtering...`);
 
+      // Phase 16 Delta Check: Find most recent trade for this market
+      const latestTrade = await db.select({ ts: trades.timestamp }).from(trades).where(eq(trades.marketId, market.id)).orderBy(desc(trades.timestamp)).limit(1).get();
+      const latestTs = latestTrade ? latestTrade.ts.getTime() : 0;
+
       // 4. Batch Processing to avoid N+1 SQLite connection freezes
       const validTradesToInsert: any[] = [];
       const uniqueWalletsFound = new Set<string>();
       const tokenIds = JSON.parse(market.clobTokenIds || '[]');
+
+      let reachedExistingData = false;
 
       // Phase 15: Process Filters using Promise.allSettled for isolated resilience
       const PROCESS_CHUNK_SIZE = 500;
@@ -69,6 +86,12 @@ export async function scrapeHistoricalData() {
         const chunk = tradesList.slice(i, i + PROCESS_CHUNK_SIZE);
 
         const results = await Promise.allSettled(chunk.map(async (tradeData: any) => {
+          const tradeTs = parseInt(tradeData.timestamp) * 1000;
+          if (tradeTs <= latestTs) {
+            reachedExistingData = true;
+            return null; // Skip old historical data
+          }
+
           const isValid = await processTradeForFilter(tradeData, true);
           if (isValid) {
             return {
@@ -77,7 +100,7 @@ export async function scrapeHistoricalData() {
               action: tradeData.side,
               price: parseFloat(tradeData.price),
               shares: parseFloat(tradeData.size),
-              timestamp: new Date(parseInt(tradeData.timestamp) * 1000),
+              timestamp: new Date(tradeTs),
               transactionHash: tradeData.transactionHash,
               _tempWalletAddr: tradeData.taker
             };
@@ -94,9 +117,17 @@ export async function scrapeHistoricalData() {
             console.warn(`[Scraper][Worker] Trade validation rejected:`, result.reason?.message || result.reason);
           }
         }
+
+        if (reachedExistingData) {
+          console.log(`[Scraper][Worker] Reached existing trades for ${marketData.conditionId.substring(0, 8)}. Breaking pagination loop.`);
+          break;
+        }
       }
 
-      if (validTradesToInsert.length === 0) return;
+      if (validTradesToInsert.length === 0) {
+        console.log(`[Scraper][Worker] No new trades for market ${marketData.conditionId.substring(0, 8)}. Skipping DB operations.`);
+        return;
+      }
 
       // 5. Bulk ensure wallets exist using chunked array inserts
       const uniqueWalletAddresses = Array.from(uniqueWalletsFound);
@@ -170,15 +201,32 @@ export async function scrapeHistoricalData() {
       }
 
       totalTradesIngested += validTradesToInsert.length;
-      console.log(`[Scraper][Worker] ✅ Market ${marketData.conditionId.substring(0, 8)} Complete.`);
-    } catch (e: any) {
-      console.error(`[Scraper][Worker] ❌ Failed to process market ${marketData.conditionId}:`, e.message);
+      console.log(`[Scraper][Worker] Completed ${marketData.conditionId.substring(0, 8)}. Inserted ${validTradesToInsert.length} new delta trades.`);
+    } catch (error: any) {
+      console.error(`[Scraper][Worker] Error processing market ${marketData.conditionId}:`, error);
     }
   };
 
-  // Run all 100 markets through the concurrency limiter
-  const extractionPromises = activeMarkets.map(marketData => marketConcurrencyLimit(() => scrapeMarket(marketData)));
-  await Promise.all(extractionPromises);
+      try {
+        const scraperPromises = qualifiedMarkets.map(m => marketConcurrencyLimit(() => scrapeMarket(m)));
 
-  console.log(`[Scraper] Deep History scrape complete! Added ${totalTradesIngested} clean trades to Dataset.`);
+        console.log('[Scraper] Awaiting all worker maps...');
+        await Promise.allSettled(scraperPromises);
+
+        console.log(`[Scraper] Delta cycle complete. Total new trades ingested: ${totalTradesIngested}`);
+
+      } catch (err: any) {
+        console.error('[Scraper] Fatal error in global concurrency loop:', err);
+      }
+
+      // Phase 16: Sleep Continuous engine for 15 minutes before waking up to scrape Deltas again.
+      if (!isShuttingDown) {
+        console.log('[Scraper] Cycle complete. Sleeping engine for 15 minutes...');
+        await new Promise(res => setTimeout(res, 15 * 60 * 1000));
+      }
+    } catch (e) {
+      console.error('[Scraper] Fatal error in outer cycle loop:', e);
+      if (!isShuttingDown) await new Promise(res => setTimeout(res, 60000));
+    }
+  } // Closes while(!isShuttingDown)
 }
