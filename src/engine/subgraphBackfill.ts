@@ -71,7 +71,7 @@ export async function backfillMarket(conditionId: string) {
 
   // 1. Fetch market metadata to map outcome indices
   const market = await db.select().from(markets).where(eq(markets.conditionId, conditionId)).get();
-  
+
   if (!market) {
     console.error(`[Subgraph] Market ${conditionId} not found in local DB. Please let the historicalScraper discover it first.`);
     return;
@@ -100,7 +100,7 @@ export async function backfillMarket(conditionId: string) {
   // Final fallback
   if (!Array.isArray(tokenIds) || tokenIds.length === 0) {
     console.error(`[Subgraph] Market ${conditionId} STILL has no CLOB token IDs mapped. Cannot align outcomes.`);
-     return;
+    return;
   }
 
   let beforeTimestamp: string | undefined = undefined;
@@ -142,11 +142,8 @@ export async function backfillMarket(conditionId: string) {
         usdcRaw = raw.makerAmountFilled;
         side = "SELL"; // Taker is selling outcome tokens to Maker
       } else {
-        // Fallback if neither match
-        outcomeAssetId = raw.makerAssetId;
-        sharesRaw = raw.makerAmountFilled;
-        usdcRaw = raw.takerAmountFilled;
-        side = "BUY";
+        // If neither token matches our DB (e.g. an LP providing collateral), skip it
+        continue;
       }
 
       if (!sharesRaw || !usdcRaw || Number(sharesRaw) === 0) continue;
@@ -164,7 +161,7 @@ export async function backfillMarket(conditionId: string) {
       };
 
       const isValid = await processTradeForFilter(tradeData as any, true);
-      
+
       if (isValid) {
         const mappedOutcome = tokenIds.indexOf(tradeData.asset_id);
         const finalOutcome = mappedOutcome !== -1 ? mappedOutcome : 0;
@@ -200,8 +197,8 @@ export async function backfillMarket(conditionId: string) {
         .all(); // Since we are isolated in a script, it's ok to fetch all. For scale, we'd chunk ‘inArray’
 
       const walletMap = new Map();
-      for(const w of dbWallets) {
-         walletMap.set(w.address, w.id);
+      for (const w of dbWallets) {
+        walletMap.set(w.address, w.id);
       }
 
       // 5. Finalize Trades mapped payload
