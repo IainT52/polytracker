@@ -23,12 +23,20 @@ export async function fetchWithRetry(url: string, options: RequestInit = {}, ret
         }
 
         if (!response.ok) {
+          if (response.status === 400) {
+            throw new Error(`HTTP Error: 400 - Bad Request`);
+          }
           throw new Error(`HTTP Error: ${response.status} - ${response.statusText}`);
         }
 
         const data = await response.json();
         return data;
       } catch (error: any) {
+        // Fast-fail on 400 errors, bypassing delays and retries
+        if (error.message && error.message.includes('400')) {
+          throw error;
+        }
+
         if (attempt === retries) {
           console.error(`[API] Failed to fetch ${url} after ${retries} attempts:`, error.message);
           throw error;
