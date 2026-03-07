@@ -191,11 +191,12 @@ export async function backfillMarket(conditionId: string) {
     if (validTradesToInsert.length > 0) {
       // 3. Insert Wallets
       const walletWrites = Array.from(uniqueWalletsFound).map(address => ({ address }));
-      const WALLET_CHUNK = 500;
+      const WALLET_CHUNK = 100;
       for (let i = 0; i < walletWrites.length; i += WALLET_CHUNK) {
         await db.insert(wallets)
           .values(walletWrites.slice(i, i + WALLET_CHUNK))
           .onConflictDoNothing({ target: wallets.address });
+        await new Promise(r => setTimeout(r, 50)); // Prevent SQLITE_BUSY locks
       }
 
       // 4. Fetch DB Wallet IDs for mapping
@@ -223,10 +224,11 @@ export async function backfillMarket(conditionId: string) {
       }).filter(t => t.walletId !== undefined);
 
       // 6. DB Bulk Insert using native SQLite batch chunking (Phase 19 stability)
-      const TRADES_CHUNK = 500;
+      const TRADES_CHUNK = 100;
       for (let i = 0; i < mappedTradePayloads.length; i += TRADES_CHUNK) {
         const chunk = mappedTradePayloads.slice(i, i + TRADES_CHUNK);
         await db.insert(trades).values(chunk).onConflictDoNothing({ target: trades.transactionHash });
+        await new Promise(r => setTimeout(r, 50)); // Release event loop
       }
 
       totalIngested += mappedTradePayloads.length;
