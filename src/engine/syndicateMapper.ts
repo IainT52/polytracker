@@ -30,7 +30,7 @@ export async function mapSyndicates() {
     let currentWindow: any[] = [];
 
     for (let i = 0; i < rawTrades.length; i++) {
-      const trade = rawTrades[i];
+      const trade: any = rawTrades[i];
       if (currentWindow.length === 0) {
         currentWindow.push(trade);
         continue;
@@ -126,7 +126,7 @@ export async function mapSyndicates() {
     let clusterId = 1;
     for (const cluster of clusters) {
       const clusterSet = new Set(cluster);
-      const clusterTrades = rawTrades.filter(t => clusterSet.has(t.wallet_id));
+      const clusterTrades = rawTrades.filter(t => clusterSet.has((t as any).wallet_id));
 
       let totalVolume = 0;
       const marketQuestions = new Set<string>();
@@ -136,19 +136,20 @@ export async function mapSyndicates() {
       const uniqueWallets = new Map<string, { pnl: number, wr: number }>();
 
       for (const t of clusterTrades) {
-        if (!uniqueWallets.has(t.wallet_id)) {
-          uniqueWallets.set(t.wallet_id, {
-            pnl: t.w_pnl || 0,
-            wr: t.w_winrate || 0
+        const tAny = t as any;
+        if (!uniqueWallets.has(tAny.wallet_id)) {
+          uniqueWallets.set(tAny.wallet_id, {
+            pnl: tAny.w_pnl || 0,
+            wr: tAny.w_winrate || 0
           });
         }
-        if (!marketIds.has(t.market_id)) {
-          marketIds.add(t.market_id);
-          if (t.volume !== null && t.volume !== undefined) {
-            totalVolume += t.volume;
+        if (!marketIds.has(tAny.market_id)) {
+          marketIds.add(tAny.market_id);
+          if (tAny.volume !== null && tAny.volume !== undefined) {
+            totalVolume += tAny.volume;
           }
-          if (t.question) {
-            marketQuestions.add(t.question);
+          if (tAny.question) {
+            marketQuestions.add(tAny.question);
           }
         }
       }

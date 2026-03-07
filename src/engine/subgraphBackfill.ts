@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { trades, wallets, markets } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, desc, like } from 'drizzle-orm';
 import { processTradeForFilter } from '../services/filterService';
 
 const GOLDSKY_URL = 'https://api.goldsky.com/api/public/project_clpb1tzpe08te01s95w1q6tso/subgraphs/polymarket-orderbook/1.0.0/gn';
@@ -175,24 +175,93 @@ export async function backfillMarket(conditionId: string) {
 }
 
 // -----------------------------------------------------
-// Manual Execution Block
-// Use: npx tsx src/engine/subgraphBackfill.ts <conditionId>
+// Phase 23: Auto-Targeting Backfill Functions
 // -----------------------------------------------------
-if (require.main === module) {
-  const targetConditionId = process.argv[2];
-  
-  if (!targetConditionId || !targetConditionId.startsWith('0x')) {
-    console.error('Usage: npx tsx src/engine/subgraphBackfill.ts <0xConditionId>');
-    process.exit(1);
+export async function autoBackfillTopMarkets(limit: number) {
+  console.log(`[Subgraph] Auto-Targeting Top ${limit} Markets by Volume...`);
+  const topMarkets = await db.select().from(markets).orderBy(desc(markets.volume)).limit(limit).all();
+
+  for (const market of topMarkets) {
+    console.log(`\n=> Preparing to backfill: ${market.question} (Vol: $${market.volume?.toLocaleString()})`);
+    await backfillMarket(market.conditionId);
+  }
+}
+
+export async function autoBackfillKeywordMarkets(keyword: string, limit: number) {
+  console.log(`[Subgraph] Auto-Targeting Top ${limit} Markets matching "${keyword}"...`);
+  const matchedMarkets = await db.select()
+    .from(markets)
+    .where(like(markets.question, `%${keyword}%`))
+    .orderBy(desc(markets.volume))
+    .limit(limit)
+    .all();
+
+  if (matchedMarkets.length === 0) {
+    console.log(`[Subgraph] No markets found matching keyword: ${keyword}`);
+    return;
   }
 
-  backfillMarket(targetConditionId)
-    .then(() => {
-      console.log('Finished standalone backfill script.');
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error('Fatal subgraph error:', err);
+  for (const market of matchedMarkets) {
+    console.log(`\n=> Preparing to backfill: ${market.question} (Vol: $${market.volume?.toLocaleString()})`);
+    await backfillMarket(market.conditionId);
+  }
+}
+
+// -----------------------------------------------------
+// Manual Execution Block
+// Use: 
+//   npx tsx src/engine/subgraphBackfill.ts <conditionId>
+//   npx tsx src/engine/subgraphBackfill.ts --auto [limit]
+//   npx tsx src/engine/subgraphBackfill.ts --keyword <keyword> [limit]
+// -----------------------------------------------------
+if (require.main === module) {
+  const flag = process.argv[2];
+
+  if (flag === '--auto') {
+    const limit = parseInt(process.argv[3] || '10');
+    autoBackfillTopMarkets(limit)
+      .then(() => {
+        console.log('Finished auto backfill sequence.');
+        process.exit(0);
+      })
+      .catch((err) => {
+        console.error('Fatal subgraph error:', err);
+        process.exit(1);
+      });
+  } else if (flag === '--keyword') {
+    const keyword = process.argv[3];
+    const limit = parseInt(process.argv[4] || '10');
+
+    if (!keyword) {
+      console.error('Usage: npx tsx src/engine/subgraphBackfill.ts --keyword <keyword> [limit]');
       process.exit(1);
-    });
+    }
+
+    autoBackfillKeywordMarkets(keyword, limit)
+      .then(() => {
+        console.log('Finished keyword backfill sequence.');
+        process.exit(0);
+      })
+      .catch((err) => {
+        console.error('Fatal subgraph error:', err);
+        process.exit(1);
+      });
+  } else {
+    // Original explicit condition ID behavior
+    const targetConditionId = flag;
+    if (!targetConditionId || !targetConditionId.startsWith('0x')) {
+      console.error('Usage: \n  npx tsx src/engine/subgraphBackfill.ts <0xConditionId>\n  npx tsx src/engine/subgraphBackfill.ts --auto [limit]\n  npx tsx src/engine/subgraphBackfill.ts --keyword <keyword> [limit]');
+      process.exit(1);
+    }
+
+    backfillMarket(targetConditionId)
+      .then(() => {
+        console.log('Finished standalone backfill script.');
+        process.exit(0);
+      })
+      .catch((err) => {
+        console.error('Fatal subgraph error:', err);
+        process.exit(1);
+      });
+  }
 }
