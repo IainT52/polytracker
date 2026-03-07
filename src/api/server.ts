@@ -378,6 +378,61 @@ app.get('/api/syndicates/graph', async (req, res) => {
 });
 
 export function startApiServer(port = 3001) {
+  // Phase 17: Interactive Wallet Drill-down
+  app.get('/api/wallets/:address', async (req, res) => {
+    try {
+      const { address } = req.params;
+      const walletData = await db.select().from(wallets).where(eq(wallets.address, address)).get();
+
+      if (!walletData) {
+        return res.status(404).json({ error: 'Wallet not found' });
+      }
+
+      // Get their 50 most recent trades combined with market metadata
+      const recentTrades = await db.select({
+        id: trades.id,
+        action: trades.action,
+        shares: trades.shares,
+        price: trades.price,
+        timestamp: trades.timestamp,
+        marketId: markets.conditionId,
+        question: markets.question,
+        icon: markets.icon
+      })
+        .from(trades)
+        .leftJoin(markets, eq(trades.marketId, markets.id))
+        .where(eq(trades.walletId, walletData.id))
+        .orderBy(desc(trades.timestamp))
+        .limit(50)
+        .all();
+
+      res.json({
+        metadata: walletData,
+        recentTrades
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Phase 17: Interactive Market Drill-down
+  app.get('/api/markets/:conditionId', async (req, res) => {
+    try {
+      const { conditionId } = req.params;
+      const marketData = await db.select().from(markets).where(eq(markets.conditionId, conditionId)).get();
+
+      if (!marketData) {
+        return res.status(404).json({ error: 'Market not found' });
+      }
+
+      res.json(marketData);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.listen(port, () => {
     console.log(`🌐 Dashboard API Server running on http://localhost:${port}`);
   });

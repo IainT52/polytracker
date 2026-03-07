@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { SyndicateGraph } from './components/SyndicateGraph';
+import { WalletDetailsModal } from './components/WalletDetailsModal';
+import { MarketDetailsModal } from './components/MarketDetailsModal';
 
 interface TradeConfig {
   isAutoTradeEnabled: boolean;
@@ -45,6 +47,10 @@ function App() {
   const [activeTab, setActiveTab] = useState<'config' | 'performance' | 'explorer' | 'syndicates'>('config');
   const [syndicateView, setSyndicateView] = useState<'graph' | 'table'>('graph');
   const [syndicates, setSyndicates] = useState<any[]>([]);
+
+  // Phase 17: Interactive UI State
+  const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
+  const [selectedMarket, setSelectedMarket] = useState<string | null>(null);
 
   useEffect(() => {
     if (!telegramId) return;
@@ -482,14 +488,15 @@ function App() {
                     {ingestionStats.length === 0 ? (
                       <tr><td colSpan={3} className="py-8 text-center text-gray-500 italic">Scraper is offline or initializing...</td></tr>
                     ) : (
-                      ingestionStats.map(stat => (
-                        <tr key={stat.marketId} className="hover:bg-gray-800/30 transition-colors">
-                          <td className="py-3 text-gray-400 font-mono text-xs">{stat.marketId ? stat.marketId.substring(0, 10) + '...' : 'Unknown'}</td>
-                          <td className="py-3 text-gray-200"><div className="max-w-xs md:max-w-md truncate" title={stat.question}>{stat.question || 'Unknown Market'}</div></td>
-                          <td className="py-3 text-right font-medium text-blue-400">{stat.tradeCount.toLocaleString()}</td>
+                        <tbody>
+                          {ingestionStats.map((stat: any, i: number) => (
+                            <tr key={stat.marketId} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedMarket(stat.marketId)}>
+                              <td className="py-3 font-mono text-gray-400 text-sm truncate max-w-[100px]">{stat.marketId.substring(0, 10)}...</td>
+                              <td className="py-3 text-gray-200 truncate max-w-[300px]">{stat.question}</td>
+                              <td className="py-3 font-bold text-indigo-400">{stat.tradeCount.toLocaleString()}</td>
                         </tr>
-                      ))
-                    )}
+                      ))}
+                      </tbody>)}
                   </tbody>
                 </table>
               </div>
@@ -515,26 +522,30 @@ function App() {
                     {topWallets.length === 0 ? (
                       <tr><td colSpan={5} className="py-8 text-center text-gray-500 italic">No wallets graded yet. Waiting for scraper...</td></tr>
                     ) : (
-                      topWallets.map(w => (
-                        <tr key={w.id} className="hover:bg-gray-800/30 transition-colors">
-                          <td className="py-4 text-gray-200 font-mono text-xs">{w.address}</td>
-                          <td className="py-4">
-                            <span className={`px-2.5 py-1 rounded-md text-xs font-bold border ${w.grade === 'A' ? 'bg-green-500/10 text-green-400 border-green-500/20' : w.grade === 'B' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-gray-500/10 text-gray-400 border-gray-500/20'}`}>
-                              {w.grade || 'Pending'}
+                        <tbody>
+                          {topWallets.map((w: any, i: number) => (
+                            <tr key={w.id} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedWallet(w.address)}>
+                              <td className="py-3 font-mono text-gray-300">{w.address.substring(0, 6)}...{w.address.substring(38)}</td>
+                              <td className="py-3">
+                                <span className={`px-2 py-1 rounded text-xs font-bold ${w.grade === 'A' ? 'bg-green-500/20 text-green-400' : w.grade === 'B' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-700 text-gray-400'}`}>
+                                  Grade {w.grade}
                             </span>
                           </td>
-                          <td className={`py-4 font-medium ${w.roi > 0 ? 'text-green-400' : w.roi < 0 ? 'text-red-400' : 'text-gray-400'}`}>
-                            {w.roi ? `${w.roi > 0 ? '+' : ''}${w.roi.toFixed(2)}%` : '---'}
+                          <td className={`py-3 font-bold ${w.roi >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {w.roi ? w.roi.toFixed(1) : '0'}%
                           </td>
-                          <td className="py-4 text-gray-300">
-                            {w.winRate ? `${w.winRate.toFixed(1)}%` : '---'}
+                          <td className="py-3 text-gray-300">
+                            {w.recentRoi30d !== null ? `${w.recentRoi30d.toFixed(1)}%` : 'N/A'}
                           </td>
-                          <td className="py-4 text-right text-gray-500 text-xs">
-                            {w.lastAnalyzed ? new Date(w.lastAnalyzed).toLocaleDateString() : 'Never'}
+                          <td className="py-3 font-bold text-gray-200">
+                            ${(w.realizedPnL || 0).toLocaleString()}
+                          </td>
+                          <td className="py-3 text-gray-400">
+                            ${(w.totalVolume || 0).toLocaleString()}
                           </td>
                         </tr>
-                      ))
-                    )}
+                      ))}
+                      </tbody>)}
                   </tbody>
                 </table>
               </div>
@@ -571,8 +582,11 @@ function App() {
                 </div>
               </div>
 
+              {/* Phase 12.1 Interactive Syndicate Graph with Redux Dispatch */}
               {syndicateView === 'graph' ? (
-                <SyndicateGraph apiUrl={API_URL} />
+                <div className="flex flex-col flex-1 h-[700px]">
+                  <SyndicateGraph apiUrl={API_URL} onNodeClick={(address) => setSelectedWallet(address)} />
+                </div>
               ) : (
                 <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar border border-gray-800 rounded-xl bg-gray-950">
                   <table className="w-full text-left text-sm whitespace-nowrap">
@@ -603,6 +617,21 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* Phase 17 Deep Dive Modals */}
+      {selectedWallet && (
+        <WalletDetailsModal
+          address={selectedWallet}
+          onClose={() => setSelectedWallet(null)}
+          onMarketClick={(mId) => setSelectedMarket(mId)}
+        />
+      )}
+      {selectedMarket && (
+        <MarketDetailsModal
+          conditionId={selectedMarket}
+          onClose={() => setSelectedMarket(null)}
+        />
+      )}
     </div>
   );
 }
