@@ -5,28 +5,30 @@ import { processTradeForFilter } from '../services/filterService';
 
 const GOLDSKY_URL = 'https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/polymarket-orderbook-resync/prod/gn';
 
-async function fetchSubgraphTrades(marketId: string, beforeTimestamp?: string) {
-  let whereClause = `market: "${marketId}"`;
+async function fetchSubgraphTrades(tokenIds: string[], beforeTimestamp?: string) {
+  const tokenIdsStr = JSON.stringify(tokenIds);
+  let whereClause = `or: [{ makerAssetId_in: ${tokenIdsStr} }, { takerAssetId_in: ${tokenIdsStr} }]`;
   if (beforeTimestamp) {
-    whereClause += `, timestamp_lt: "${beforeTimestamp}"`;
+    whereClause = `timestamp_lt: "${beforeTimestamp}", ${whereClause}`;
   }
 
   const query = `
     query GetTrades {
-      transactions(
+      orderFilledEvents(
         where: { ${whereClause} }
         orderBy: timestamp
         orderDirection: desc
         first: 1000
       ) {
         id
-        hash
+        transactionHash
+        maker
         taker
-        price
-        size
-        side
+        makerAssetId
+        takerAssetId
+        makerAmountFilled
+        takerAmountFilled
         timestamp
-        asset_id
       }
     }
   `;
@@ -51,7 +53,7 @@ async function fetchSubgraphTrades(marketId: string, beforeTimestamp?: string) {
         throw new Error('GraphQL queried returned errors');
       }
 
-      return data?.transactions || [];
+      return data?.orderFilledEvents || [];
     } catch (e) {
       retries--;
       if (retries === 0) throw e;
@@ -102,7 +104,7 @@ export async function backfillMarket(conditionId: string) {
 
   while (true) {
     console.log(`[Subgraph] Fetching up to 1000 prior trades${beforeTimestamp ? ` before ${beforeTimestamp}` : ' from present'}...`);
-    const tradesList = await fetchSubgraphTrades(conditionId, beforeTimestamp);
+    const tradesList = await fetchSubgraphTrades(tokenIds, beforeTimestamp);
 
     if (tradesList.length === 0) {
       console.log(`[Subgraph] Completed backfill for ${conditionId}. Reached beginning of time.`);
@@ -113,13 +115,32 @@ export async function backfillMarket(conditionId: string) {
     const validTradesToInsert: any[] = [];
 
     // 2. Validate and Map
-    for (const tradeData of tradesList) {
-      if (!tradeData.taker || !tradeData.hash) continue;
+    for (const raw of tradesList) {
+      if (!raw.taker || !raw.transactionHash) continue;
 
-      // Ensure timestamp format aligns perfectly
-      tradeData.timestamp = tradeData.timestamp.toString();
+      // USDC is always asset_id "0". Find which token is the market outcome.
+      const isMakerUSDC = raw.makerAssetId === "0";
+      const outcomeAssetId = isMakerUSDC ? raw.takerAssetId : raw.makerAssetId;
 
-      const isValid = await processTradeForFilter(tradeData, true);
+      const usdcRaw = isMakerUSDC ? raw.makerAmountFilled : raw.takerAmountFilled;
+      const sharesRaw = isMakerUSDC ? raw.takerAmountFilled : raw.makerAmountFilled;
+
+      if (!sharesRaw || Number(sharesRaw) === 0) continue;
+
+      const tradeData = {
+        id: raw.id,
+        transactionHash: raw.transactionHash,
+        taker: raw.taker,
+        maker: raw.maker,
+        timestamp: raw.timestamp.toString(),
+        asset_id: outcomeAssetId,
+        size: (Number(sharesRaw) / 1000000).toString(),
+        price: (Number(usdcRaw) / Number(sharesRaw)).toString(),
+        // If taker pays USDC ("0"), taker is BUYING shares. Otherwise SELLING.
+        side: raw.takerAssetId === "0" ? "BUY" : "SELL"
+      };
+
+      const isValid = await processTradeForFilter(tradeData as any, true);
       
       if (isValid) {
         const mappedOutcome = tokenIds.indexOf(tradeData.asset_id);
@@ -132,7 +153,7 @@ export async function backfillMarket(conditionId: string) {
           price: parseFloat(tradeData.price),
           shares: parseFloat(tradeData.size),
           timestamp: new Date(parseInt(tradeData.timestamp) * 1000),
-          transactionHash: tradeData.hash,
+          transactionHash: tradeData.transactionHash,
           _tempWalletAddr: tradeData.taker.toLowerCase()
         });
 
