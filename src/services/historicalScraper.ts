@@ -59,14 +59,14 @@ export async function scrapeHistoricalData() {
       // Phase 15: Automatically subscribe to this live market on the WebSocket
       subscribeToMarket(marketData.conditionId);
 
-      // 3. Fetch Deep Paginated trades for market (Up to 20,000)
-      console.log(`[Scraper][Worker] Fetching deep pagination for market ${marketData.conditionId.substring(0, 8)}...`);
-      const tradesList = await fetchMarketTrades(marketData.conditionId, 20000);
-      console.log(`[Scraper][Worker] Fetched ${tradesList.length} historical trades for ${marketData.conditionId.substring(0, 8)}. Filtering...`);
-
-      // Phase 16 Delta Check: Find most recent trade for this market
+      // Phase 16 Delta Check: Find most recent trade for this market BEFORE we ask the API to paginate deep history
       const latestTrade = await db.select({ ts: trades.timestamp }).from(trades).where(eq(trades.marketId, market.id)).orderBy(desc(trades.timestamp)).limit(1).get();
       const latestTs = latestTrade ? latestTrade.ts.getTime() : 0;
+
+      // 3. Fetch Deep Paginated trades for market (Up to 20,000)
+      console.log(`[Scraper][Worker] Fetching deep pagination for market ${marketData.conditionId.substring(0, 8)}...`);
+      const tradesList = await fetchMarketTrades(marketData.conditionId, 20000, latestTs);
+      console.log(`[Scraper][Worker] Fetched ${tradesList.length} historical trades for ${marketData.conditionId.substring(0, 8)}. Filtering...`);
 
       // 4. Batch Processing to avoid N+1 SQLite connection freezes
       const validTradesToInsert: any[] = [];

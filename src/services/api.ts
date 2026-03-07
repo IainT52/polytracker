@@ -107,7 +107,7 @@ export async function fetchActiveMarkets(limit = 1000, offset = 0): Promise<Mark
  * Fetch historical trades for a specific market Condition ID using CLOB API
  * Implements Deep Cursor Pagination for Phase 10 High-Volume extraction
  */
-export async function fetchMarketTrades(conditionId: string, maxTrades = 20000): Promise<TradeData[]> {
+export async function fetchMarketTrades(conditionId: string, maxTrades = 20000, latestTs = 0): Promise<TradeData[]> {
   const mappedTrades: TradeData[] = [];
   let offset = 0;
 
@@ -138,8 +138,16 @@ export async function fetchMarketTrades(conditionId: string, maxTrades = 20000):
 
     if (rawTrades.length === 0) break;
 
+    let reachedExistingData = false;
+
     for (const data of rawTrades) {
       if (!data.proxyWallet || !data.transactionHash) continue;
+
+      const tradeTs = parseInt(data.timestamp) * 1000;
+      if (tradeTs <= latestTs) {
+        reachedExistingData = true;
+        break; // Break the inner loop
+      }
 
       mappedTrades.push({
         id: data.transactionHash,
@@ -153,6 +161,11 @@ export async function fetchMarketTrades(conditionId: string, maxTrades = 20000):
         market: conditionId,
         asset_id: data.asset_id
       });
+    }
+
+    if (reachedExistingData) {
+      console.log(`[API] Reached existing data for ${conditionId} past ${latestTs}ms. Halting deep pagination.`);
+      break; // Break the overarching while loop, preventing next API offset hit!
     }
 
     // Increment offset
