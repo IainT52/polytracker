@@ -129,3 +129,24 @@ export const walletCorrelations = sqliteTable('wallet_correlations', {
     pk: primaryKey({ columns: [table.walletA, table.walletB] }),
   }
 });
+
+// Phase 21: N-Size Syndicate Clustering
+export const syndicates = sqliteTable('syndicates', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  size: integer('size').notNull(),
+  combinedPnL: real('combined_pnl').notNull(),
+  winRate: real('win_rate').notNull(),
+  targetVolumeLevel: real('target_volume_level').notNull(),
+  topKeywords: text('top_keywords').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+});
+
+export const syndicateMembers = sqliteTable('syndicate_members', {
+  syndicateId: integer('syndicate_id').notNull().references(() => syndicates.id, { onDelete: 'cascade' }),
+  walletAddress: text('wallet_address').notNull().references(() => wallets.address, { onDelete: 'cascade' }),
+}, (table) => {
+  return {
+    pk: primaryKey({ columns: [table.syndicateId, table.walletAddress] }),
+  }
+});

@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { db } from '../db';
-import { users, autoTradeConfigs, userPositions, paperPositions, markets, wallets, trades, walletCorrelations } from '../db/schema';
+import { users, autoTradeConfigs, userPositions, paperPositions, markets, wallets, trades, walletCorrelations, syndicates, syndicateMembers } from '../db/schema';
 import { eq, desc, sql, gte, inArray } from 'drizzle-orm';
 import { ethers } from 'ethers';
 import { encryptKey } from '../bot/encryption';
@@ -244,11 +244,28 @@ app.get('/api/stats/signals', async (req, res) => {
       avgRoi = (pnlStats.totalRealized / pnlStats.totalCost) * 100;
     }
 
+    const recentSignals = await db.select({
+      id: paperPositions.id,
+      marketId: markets.conditionId,
+      question: markets.question,
+      action: sql<string>`'BUY'`,
+      price: paperPositions.buyPrice,
+      shares: paperPositions.shares,
+      cost: paperPositions.totalCost,
+      timestamp: paperPositions.timestamp,
+      status: paperPositions.status
+    })
+      .from(paperPositions)
+      .innerJoin(markets, eq(paperPositions.marketId, markets.id))
+      .orderBy(desc(paperPositions.timestamp))
+      .limit(50)
+      .all();
+
     res.json({
       totalSignals,
       winRate: parseFloat(winRate.toFixed(1)),
       avgRoi: parseFloat(avgRoi.toFixed(1)),
-      recentSignals: []
+      recentSignals
     });
   } catch (error) {
     console.error(error);
@@ -282,10 +299,40 @@ setInterval(refreshIngestionStats, 30000);
 // Get Ingestion Stats 
 app.get('/api/stats/ingestion', async (req, res) => {
   try {
-    res.json(cachedIngestionStats);
+    const parentMarketsScraped = new Set(cachedIngestionStats.map(s => s.question)).size;
+    res.json({
+      stats: cachedIngestionStats,
+      subMarketsScraped: cachedIngestionStats.length,
+      parentMarketsScraped
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Phase 21: Get N-Size Syndicates
+app.get('/api/syndicates', async (req, res) => {
+  try {
+    const allSyndicates = await db.select().from(syndicates).orderBy(desc(syndicates.size), desc(syndicates.combinedPnL)).all();
+    const allMembers = await db.select().from(syndicateMembers).all();
+
+    // Group members by syndicateId
+    const membersMap = new Map<number, string[]>();
+    for (const m of allMembers) {
+      if (!membersMap.has(m.syndicateId)) membersMap.set(m.syndicateId, []);
+      membersMap.get(m.syndicateId)!.push(m.walletAddress);
+    }
+
+    const payload = allSyndicates.map(s => ({
+      ...s,
+      members: membersMap.get(s.id) || []
+    }));
+
+    res.json(payload);
+  } catch (error) {
+    console.error('[API] /api/syndicates error:', error);
+    res.status(500).json({ error: 'Failed to fetch syndicates' });
   }
 });
 

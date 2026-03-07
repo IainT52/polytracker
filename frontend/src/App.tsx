@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { SyndicateGraph } from './components/SyndicateGraph';
 import { WalletDetailsModal } from './components/WalletDetailsModal';
 import { MarketDetailsModal } from './components/MarketDetailsModal';
+import { SyndicateDetailsModal } from './components/SyndicateDetailsModal';
 
 interface TradeConfig {
   isAutoTradeEnabled: boolean;
@@ -38,7 +39,7 @@ function App() {
   const [backtestData, setBacktestData] = useState<any[]>([]);
   const [topWallets, setTopWallets] = useState<any[]>([]);
   const [signalStats, setSignalStats] = useState<any>(null);
-  const [ingestionStats, setIngestionStats] = useState<any[]>([]);
+  const [ingestionStats, setIngestionStats] = useState<any>({ stats: [], subMarketsScraped: 0, parentMarketsScraped: 0 });
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [runningBacktest, setRunningBacktest] = useState(false);
@@ -51,6 +52,7 @@ function App() {
   // Phase 17: Interactive UI State
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
   const [selectedMarket, setSelectedMarket] = useState<string | null>(null);
+  const [selectedSyndicate, setSelectedSyndicate] = useState<any | null>(null);
 
   useEffect(() => {
     if (!telegramId) return;
@@ -463,6 +465,42 @@ function App() {
               </div>
             )}
 
+            {/* Recent Alpha Signals Widget */}
+            {signalStats && signalStats.recentSignals && signalStats.recentSignals.length > 0 && (
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl space-y-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold flex items-center gap-2 text-indigo-300">
+                    <svg className="w-5 h-5 text-indigo-400 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    Recent Alpha Signals
+                  </h2>
+                </div>
+                <div className="overflow-x-auto max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="sticky top-0 bg-gray-900 shadow-md">
+                      <tr className="border-b border-gray-800 text-gray-400">
+                        <th className="pb-3 font-medium uppercase tracking-wider text-xs">Market</th>
+                        <th className="pb-3 font-medium uppercase tracking-wider text-xs">Action</th>
+                        <th className="pb-3 font-medium uppercase tracking-wider text-xs text-right">Avg Entry Price</th>
+                        <th className="pb-3 font-medium uppercase tracking-wider text-xs text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800/50">
+                      {signalStats.recentSignals.map((sig: any) => (
+                        <tr key={sig.id} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedMarket(sig.marketId)}>
+                          <td className="py-3 text-gray-200 truncate max-w-[300px]">{sig.question}</td>
+                          <td className="py-3">
+                            <span className="px-2 py-1 rounded text-xs font-bold text-green-400 bg-green-400/10">{sig.action}</span>
+                          </td>
+                          <td className="py-3 font-bold text-indigo-400 text-right">${sig.price.toFixed(3)}</td>
+                          <td className="py-3 text-gray-400 text-right text-xs font-mono">{sig.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* Ingestion Status Widget */}
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl space-y-4">
               <div className="flex justify-between items-center mb-4">
@@ -471,7 +509,10 @@ function App() {
                   Live Ingestion Status
                 </h2>
                 <span className="bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full text-xs font-medium border border-blue-500/20">
-                  Markets Scraped: {ingestionStats.length} / 100
+                  Total Markets Scraped: {ingestionStats.parentMarketsScraped || 0}
+                </span>
+                <span className="bg-gray-800 text-gray-400 px-3 py-1 rounded-full text-xs font-medium border border-gray-700">
+                  Sub-Markets: {ingestionStats.subMarketsScraped || 0}
                 </span>
               </div>
 
@@ -485,10 +526,10 @@ function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800/50">
-                    {ingestionStats.length === 0 ? (
+                    {!ingestionStats.stats || ingestionStats.stats.length === 0 ? (
                       <tr><td colSpan={3} className="py-8 text-center text-gray-500 italic">Scraper is offline or initializing...</td></tr>
                     ) : (
-                        ingestionStats.map((stat: any, i: number) => (
+                        ingestionStats.stats.map((stat: any) => (
                           <tr key={stat.marketId} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedMarket(stat.marketId)}>
                             <td className="py-3 font-mono text-gray-400 text-sm truncate max-w-[100px]">{stat.marketId.substring(0, 10)}...</td>
                             <td className="py-3 text-gray-200 truncate max-w-[300px]">{stat.question}</td>
@@ -521,7 +562,7 @@ function App() {
                     {topWallets.length === 0 ? (
                       <tr><td colSpan={6} className="py-8 text-center text-gray-500 italic">No wallets graded yet. Waiting for scraper...</td></tr>
                     ) : (
-                        topWallets.map((w: any, i: number) => (
+                        topWallets.map((w: any) => (
                           <tr key={w.id} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedWallet(w.address)}>
                             <td className="py-3 font-mono text-gray-300">{w.address.substring(0, 6)}...{w.address.substring(38)}</td>
                             <td className="py-3">
@@ -583,27 +624,33 @@ function App() {
               {/* Phase 12.1 Interactive Syndicate Graph with Redux Dispatch */}
               {syndicateView === 'graph' ? (
                 <div className="flex flex-col flex-1 h-[700px]">
-                  <SyndicateGraph apiUrl={API_URL} onNodeClick={(address) => setSelectedWallet(address)} />
+                  <SyndicateGraph apiUrl={API_URL} onNodeClick={(address) => setSelectedWallet(address)} selectedSyndicate={selectedSyndicate} />
                 </div>
               ) : (
                 <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar border border-gray-800 rounded-xl bg-gray-950">
                   <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="sticky top-0 bg-gray-900 shadow-md">
                       <tr className="border-b border-gray-800 text-gray-400">
-                        <th className="py-3 px-4 font-medium uppercase tracking-wider text-xs">Wallet A</th>
-                        <th className="py-3 px-4 font-medium uppercase tracking-wider text-xs">Wallet B</th>
-                        <th className="py-3 px-4 font-medium uppercase tracking-wider text-xs text-right">Co-Occurrences</th>
+                          <th className="py-3 px-4 font-medium uppercase tracking-wider text-xs">Name</th>
+                          <th className="py-3 px-4 font-medium uppercase tracking-wider text-xs">Size</th>
+                          <th className="py-3 px-4 font-medium uppercase tracking-wider text-xs text-right">Comb. PnL</th>
+                          <th className="py-3 px-4 font-medium uppercase tracking-wider text-xs text-right">Win Rate</th>
+                          <th className="py-3 px-4 font-medium uppercase tracking-wider text-xs">Keywords</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-800/50">
                       {syndicates.length === 0 ? (
-                        <tr><td colSpan={3} className="py-8 text-center text-gray-500 italic">No syndicates detected yet.</td></tr>
+                          <tr><td colSpan={5} className="py-8 text-center text-gray-500 italic">No syndicates detected yet.</td></tr>
                       ) : (
-                        syndicates.map((syn, idx) => (
-                          <tr key={idx} className="hover:bg-gray-800/30 transition-colors">
-                            <td className="py-4 text-gray-500 font-mono text-xs">{syn.walletA.substring(0, 10)}...{syn.walletA.substring(syn.walletA.length - 8)}</td>
-                            <td className="py-4 text-gray-500 font-mono text-xs">{syn.walletB.substring(0, 10)}...{syn.walletB.substring(syn.walletB.length - 8)}</td>
-                            <td className="py-4 text-right font-medium text-pink-400">{syn.coOccurrenceCount}</td>
+                            syndicates.map((syn: any) => (
+                              <tr key={syn.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedSyndicate(syn)}>
+                                <td className="py-4 px-4 text-gray-200 font-bold">{syn.name}</td>
+                                <td className="py-4 px-4 text-indigo-300 font-medium">{syn.size} members</td>
+                                <td className={`py-4 px-4 text-right font-bold ${syn.combinedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {syn.combinedPnL >= 0 ? '+' : '-'}${Math.abs(syn.combinedPnL).toLocaleString()}
+                                </td>
+                                <td className="py-4 px-4 text-right text-blue-400 font-bold">{syn.winRate.toFixed(1)}%</td>
+                                <td className="py-4 px-4 text-gray-400 text-xs truncate max-w-[200px]" title={syn.topKeywords}>{syn.topKeywords}</td>
                           </tr>
                         ))
                       )}
@@ -628,6 +675,13 @@ function App() {
         <MarketDetailsModal
           conditionId={selectedMarket}
           onClose={() => setSelectedMarket(null)}
+        />
+      )}
+      {selectedSyndicate && (
+        <SyndicateDetailsModal
+          syndicate={selectedSyndicate}
+          onClose={() => setSelectedSyndicate(null)}
+          onWalletClick={(address) => setSelectedWallet(address)}
         />
       )}
     </div>

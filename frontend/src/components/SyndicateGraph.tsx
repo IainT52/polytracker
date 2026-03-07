@@ -28,9 +28,10 @@ function useResizeObserver<T extends HTMLElement>() {
 interface SyndicateGraphProps {
   apiUrl: string;
   onNodeClick: (nodeId: string) => void;
+  selectedSyndicate?: any;
 }
 
-export const SyndicateGraph: React.FC<SyndicateGraphProps> = ({ apiUrl, onNodeClick }) => {
+export const SyndicateGraph: React.FC<SyndicateGraphProps> = ({ apiUrl, onNodeClick, selectedSyndicate }) => {
   const [graphData, setGraphData] = useState<{ nodes: any[], links: any[] }>({ nodes: [], links: [] });
   const [loading, setLoading] = useState(true);
   const fgRef = useRef<any>(null);
@@ -90,6 +91,9 @@ export const SyndicateGraph: React.FC<SyndicateGraphProps> = ({ apiUrl, onNodeCl
         graphData={graphData}
         nodeLabel="id"
         nodeColor={node => {
+          if (selectedSyndicate && selectedSyndicate.members?.includes(node.id)) {
+            return '#ec4899'; // Pink-500 highlight
+          }
           if (node.group === 'A') return '#39FF14'; // Neon Green
           if (node.group === 'B') return '#00BFFF'; // Blue
           return '#6b7280'; // Gray for unrated

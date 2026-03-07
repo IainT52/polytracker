@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "aa60885a-8a15-46af-8d7d-4635f739f80c",
+  "id": "67d25b9b-a68a-48a1-aefd-73c867d7e3ae",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "auto_trade_configs": {
@@ -68,6 +68,38 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'10'"
+        },
+        "min_whales_to_trigger": {
+          "name": "min_whales_to_trigger",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 2
+        },
+        "dynamic_sizing_enabled": {
+          "name": "dynamic_sizing_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "conviction_multiplier": {
+          "name": "conviction_multiplier",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0.5
+        },
+        "syndicate_multiplier": {
+          "name": "syndicate_multiplier",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1.5
         },
         "take_profit_pct": {
           "name": "take_profit_pct",
@@ -159,6 +191,35 @@
           "notNull": true,
           "autoincrement": false
         },
+        "clob_token_ids": {
+          "name": "clob_token_ids",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "volume": {
+          "name": "volume",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "icon": {
+          "name": "icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "resolved": {
           "name": "resolved",
           "type": "integer",
@@ -173,7 +234,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-06T01:55:02.143Z\"'"
+          "default": "'\"2026-03-07T02:35:37.477Z\"'"
         },
         "updated_at": {
           "name": "updated_at",
@@ -181,7 +242,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-06T01:55:02.143Z\"'"
+          "default": "'\"2026-03-07T02:35:37.477Z\"'"
         }
       },
       "indexes": {
@@ -231,35 +292,35 @@
         },
         "buy_price": {
           "name": "buy_price",
-          "type": "text",
+          "type": "real",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "shares": {
           "name": "shares",
-          "type": "text",
+          "type": "real",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "total_cost": {
           "name": "total_cost",
-          "type": "text",
+          "type": "real",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "resolved_price": {
           "name": "resolved_price",
-          "type": "text",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
         "realized_pnl": {
           "name": "realized_pnl",
-          "type": "text",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -309,6 +370,131 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "syndicate_members": {
+      "name": "syndicate_members",
+      "columns": {
+        "syndicate_id": {
+          "name": "syndicate_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "wallet_address": {
+          "name": "wallet_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "syndicate_members_syndicate_id_syndicates_id_fk": {
+          "name": "syndicate_members_syndicate_id_syndicates_id_fk",
+          "tableFrom": "syndicate_members",
+          "tableTo": "syndicates",
+          "columnsFrom": [
+            "syndicate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "syndicate_members_wallet_address_wallets_address_fk": {
+          "name": "syndicate_members_wallet_address_wallets_address_fk",
+          "tableFrom": "syndicate_members",
+          "tableTo": "wallets",
+          "columnsFrom": [
+            "wallet_address"
+          ],
+          "columnsTo": [
+            "address"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "syndicate_members_syndicate_id_wallet_address_pk": {
+          "columns": [
+            "syndicate_id",
+            "wallet_address"
+          ],
+          "name": "syndicate_members_syndicate_id_wallet_address_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "syndicates": {
+      "name": "syndicates",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "size": {
+          "name": "size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "combined_pnl": {
+          "name": "combined_pnl",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "win_rate": {
+          "name": "win_rate",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_volume_level": {
+          "name": "target_volume_level",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "top_keywords": {
+          "name": "top_keywords",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -371,7 +557,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-06T01:55:02.143Z\"'"
+          "default": "'\"2026-03-07T02:35:37.477Z\"'"
         },
         "transaction_hash": {
           "name": "transaction_hash",
@@ -388,6 +574,27 @@
             "transaction_hash"
           ],
           "isUnique": true
+        },
+        "market_id_idx": {
+          "name": "market_id_idx",
+          "columns": [
+            "market_id"
+          ],
+          "isUnique": false
+        },
+        "wallet_id_idx": {
+          "name": "wallet_id_idx",
+          "columns": [
+            "wallet_id"
+          ],
+          "isUnique": false
+        },
+        "timestamp_idx": {
+          "name": "timestamp_idx",
+          "columns": [
+            "timestamp"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -455,21 +662,21 @@
         },
         "buy_price": {
           "name": "buy_price",
-          "type": "text",
+          "type": "real",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "shares": {
           "name": "shares",
-          "type": "text",
+          "type": "real",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "total_cost": {
           "name": "total_cost",
-          "type": "text",
+          "type": "real",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -591,7 +798,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-06T01:55:02.143Z\"'"
+          "default": "'\"2026-03-07T02:35:37.476Z\"'"
         },
         "updated_at": {
           "name": "updated_at",
@@ -599,7 +806,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-06T01:55:02.143Z\"'"
+          "default": "'\"2026-03-07T02:35:37.476Z\"'"
         }
       },
       "indexes": {
@@ -613,6 +820,53 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "wallet_correlations": {
+      "name": "wallet_correlations",
+      "columns": {
+        "wallet_a": {
+          "name": "wallet_a",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "wallet_b": {
+          "name": "wallet_b",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "co_occurrence_count": {
+          "name": "co_occurrence_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "last_seen_together": {
+          "name": "last_seen_together",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "wallet_correlations_wallet_a_wallet_b_pk": {
+          "columns": [
+            "wallet_a",
+            "wallet_b"
+          ],
+          "name": "wallet_correlations_wallet_a_wallet_b_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
@@ -654,6 +908,41 @@
           "notNull": false,
           "autoincrement": false
         },
+        "recent_roi_30d": {
+          "name": "recent_roi_30d",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "recent_win_rate_30d": {
+          "name": "recent_win_rate_30d",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "total_trades": {
+          "name": "total_trades",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "total_volume": {
+          "name": "total_volume",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "realized_pnl": {
+          "name": "realized_pnl",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "last_analyzed": {
           "name": "last_analyzed",
           "type": "integer",
@@ -675,7 +964,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-06T01:55:02.143Z\"'"
+          "default": "'\"2026-03-07T02:35:37.477Z\"'"
         },
         "updated_at": {
           "name": "updated_at",
@@ -683,7 +972,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-06T01:55:02.143Z\"'"
+          "default": "'\"2026-03-07T02:35:37.477Z\"'"
         }
       },
       "indexes": {
@@ -693,6 +982,13 @@
             "address"
           ],
           "isUnique": true
+        },
+        "grade_idx": {
+          "name": "grade_idx",
+          "columns": [
+            "grade"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {},

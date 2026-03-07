@@ -24,8 +24,8 @@ export async function scrapeHistoricalData() {
 
       let totalTradesIngested = 0;
 
-      // 2. Concurrency Limiter: Analyze 5 markets simultaneously
-      const marketConcurrencyLimit = pLimit(5);
+      // 2. Concurrency Limiter: Analyze 2 markets simultaneously (reduced for stability)
+      const marketConcurrencyLimit = pLimit(2);
 
       const scrapeMarket = async (marketData: any) => {
     if (isShuttingDown) return;
@@ -187,9 +187,8 @@ export async function scrapeHistoricalData() {
           let retries = 3;
           while (retries > 0) {
             try {
-              await db.transaction(async (tx) => {
-                await tx.insert(trades).values(chunk).onConflictDoNothing({ target: trades.transactionHash });
-              });
+              // Removed useless db.transaction wrapper to prevent @libsql native driver segfaults during aggressive C++ allocations
+              await db.insert(trades).values(chunk).onConflictDoNothing({ target: trades.transactionHash });
               break;
             } catch (err: any) {
               retries--;

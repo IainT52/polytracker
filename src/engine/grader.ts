@@ -138,27 +138,30 @@ export async function runWalletGrader() {
 
   console.log(`[Grader] Batching SQLite DB writes for ${updates.length} wallets...`);
 
-  // Batch updates in SQLite transaction to avoid N+1 bottleneck
+  // Batch updates in SQLite natively to avoid N+1 bottleneck and Node.js proxy segfaults
   const CHUNK_SIZE = 500;
   for (let i = 0; i < updates.length; i += CHUNK_SIZE) {
     const chunk = updates.slice(i, i + CHUNK_SIZE);
-    await db.transaction(async (tx) => {
-      for (const update of chunk) {
-        await tx.update(wallets)
-          .set({
-            grade: update.grade,
-            roi: update.roi,
-            winRate: update.winRate,
-            recentRoi30d: update.recentRoi30d,
-            recentWinRate30d: update.recentWinRate30d,
-            totalTrades: update.totalTrades,
-            totalVolume: update.totalVolume,
-            realizedPnL: update.realizedPnL,
-            lastAnalyzed: update.lastAnalyzed
-          })
-          .where(eq(wallets.id, update.id));
-      }
-    });
+
+    const batchQueries: any[] = chunk.map(update =>
+      db.update(wallets)
+        .set({
+          grade: update.grade,
+          roi: update.roi,
+          winRate: update.winRate,
+          recentRoi30d: update.recentRoi30d,
+          recentWinRate30d: update.recentWinRate30d,
+          totalTrades: update.totalTrades,
+          totalVolume: update.totalVolume,
+          realizedPnL: update.realizedPnL,
+          lastAnalyzed: update.lastAnalyzed
+        })
+        .where(eq(wallets.id, update.id))
+    );
+
+    // native batch pushes everything in a single driver instruction, freeing NodeJS V8 from context exhaustion
+    // @ts-ignore
+    await db.batch(batchQueries);
   }
 
   console.log('[Grader] Finished SQL grading block.');
