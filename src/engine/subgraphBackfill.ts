@@ -3,39 +3,61 @@ import { trades, wallets, markets } from '../db/schema';
 import { eq, desc, like } from 'drizzle-orm';
 import { processTradeForFilter } from '../services/filterService';
 
-async function fetchDeepClobTrades(marketId: string, cursor?: string) {
-  let url = `https://clob.polymarket.com/data/trades?market=${marketId}&limit=500`;
-  if (cursor) {
-    url += `&next_cursor=${cursor}`;
+const GOLDSKY_URL = 'https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/polymarket-orderbook-resync/prod/gn';
+
+async function fetchSubgraphTrades(marketId: string, beforeTimestamp?: string) {
+  let whereClause = `market: "${marketId}"`;
+  if (beforeTimestamp) {
+    whereClause += `, timestamp_lt: "${beforeTimestamp}"`;
   }
+
+  const query = `
+    query GetTrades {
+      transactions(
+        where: { ${whereClause} }
+        orderBy: timestamp
+        orderDirection: desc
+        first: 1000
+      ) {
+        id
+        hash
+        taker
+        price
+        size
+        side
+        timestamp
+        asset_id
+      }
+    }
+  `;
 
   let retries = 3;
   while (retries > 0) {
     try {
-      const response = await fetch(url);
-
-      if (response.status === 429) {
-        retries--;
-        await new Promise(res => setTimeout(res, 2000));
-        continue;
-      }
+      const response = await fetch(GOLDSKY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
 
       if (!response.ok) {
-        throw new Error(`CLOB API Error: ${response.status} ${response.statusText}`);
+        throw new Error(`Goldsky API Error: ${response.status} ${response.statusText}`);
       }
 
-      const payload = await response.json();
-      return {
-        trades: payload.data || [],
-        nextCursor: payload.next_cursor
-      };
+      const { data, errors } = await response.json();
+
+      if (errors) {
+        console.error('[Subgraph] GraphQL Errors:', errors);
+        throw new Error('GraphQL queried returned errors');
+      }
+
+      return data?.transactions || [];
     } catch (e) {
       retries--;
       if (retries === 0) throw e;
       await new Promise(res => setTimeout(res, 2000));
     }
   }
-  return { trades: [], nextCursor: undefined };
 }
 
 export async function backfillMarket(conditionId: string) {
@@ -75,15 +97,15 @@ export async function backfillMarket(conditionId: string) {
      return;
   }
 
-  let currentCursor: string | undefined = undefined;
+  let beforeTimestamp: string | undefined = undefined;
   let totalIngested = 0;
 
   while (true) {
-    console.log(`[Subgraph] Fetching up to 500 prior trades${currentCursor ? ` at cursor ${currentCursor}` : ' from present'}...`);
-    const { trades: tradesList, nextCursor } = await fetchDeepClobTrades(conditionId, currentCursor);
+    console.log(`[Subgraph] Fetching up to 1000 prior trades${beforeTimestamp ? ` before ${beforeTimestamp}` : ' from present'}...`);
+    const tradesList = await fetchSubgraphTrades(conditionId, beforeTimestamp);
 
     if (tradesList.length === 0) {
-      console.log(`[Subgraph] Completed backfill for ${conditionId}. No more trades returned.`);
+      console.log(`[Subgraph] Completed backfill for ${conditionId}. Reached beginning of time.`);
       break;
     }
 
@@ -91,17 +113,10 @@ export async function backfillMarket(conditionId: string) {
     const validTradesToInsert: any[] = [];
 
     // 2. Validate and Map
-    for (const raw of tradesList) {
-      const tradeData = {
-        ...raw,
-        transactionHash: raw.transaction_hash || raw.hash,
-        taker: raw.taker_address || raw.taker,
-        maker: raw.maker_address || raw.maker
-      };
+    for (const tradeData of tradesList) {
+      if (!tradeData.taker || !tradeData.hash) continue;
 
-      if (!tradeData.taker || !tradeData.transactionHash) continue;
-
-      // Ensure timestamp format aligns perfectly for filter checking
+      // Ensure timestamp format aligns perfectly
       tradeData.timestamp = tradeData.timestamp.toString();
 
       const isValid = await processTradeForFilter(tradeData, true);
@@ -117,7 +132,7 @@ export async function backfillMarket(conditionId: string) {
           price: parseFloat(tradeData.price),
           shares: parseFloat(tradeData.size),
           timestamp: new Date(parseInt(tradeData.timestamp) * 1000),
-          transactionHash: tradeData.transactionHash,
+          transactionHash: tradeData.hash,
           _tempWalletAddr: tradeData.taker.toLowerCase()
         });
 
@@ -170,16 +185,10 @@ export async function backfillMarket(conditionId: string) {
       console.log(`[Subgraph] Inserted ${mappedTradePayloads.length} delta trades...`);
     }
 
-    // Advance to the next pagination cursor
-    currentCursor = nextCursor;
-    if (!currentCursor || currentCursor === 'LTE=') {
-      console.log(`[Subgraph] Reached beginning of time for ${conditionId}.`);
-      break;
-    } else {
-      // Advance cursor even if all filtered locally
-      currentCursor = nextCursor;
-      if (!currentCursor || currentCursor === 'LTE=') break;
-    }
+    // Subgraph requires us to set the 'beforeTimestamp' to the OLDEST trade in this block
+    // to walk backward in time
+    const oldestTradeInBlock = tradesList[tradesList.length - 1];
+    beforeTimestamp = oldestTradeInBlock.timestamp.toString();
   }
 
   console.log(`[Subgraph] 🎉 Successfully ingested ${totalIngested} total historical trades backfilled from Goldsky.`);
