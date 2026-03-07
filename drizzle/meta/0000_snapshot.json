@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "67d25b9b-a68a-48a1-aefd-73c867d7e3ae",
+  "id": "35794378-8b69-4e05-9017-80a529040fd5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "auto_trade_configs": {
@@ -177,6 +177,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "description": {
           "name": "description",
           "type": "text",
@@ -234,7 +241,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-07T02:35:37.477Z\"'"
+          "default": "'\"2026-03-07T03:15:37.149Z\"'"
         },
         "updated_at": {
           "name": "updated_at",
@@ -242,7 +249,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-07T02:35:37.477Z\"'"
+          "default": "'\"2026-03-07T03:15:37.149Z\"'"
         }
       },
       "indexes": {
@@ -557,7 +564,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-07T02:35:37.477Z\"'"
+          "default": "'\"2026-03-07T03:15:37.149Z\"'"
         },
         "transaction_hash": {
           "name": "transaction_hash",
@@ -798,7 +805,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-07T02:35:37.476Z\"'"
+          "default": "'\"2026-03-07T03:15:37.149Z\"'"
         },
         "updated_at": {
           "name": "updated_at",
@@ -806,7 +813,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-07T02:35:37.476Z\"'"
+          "default": "'\"2026-03-07T03:15:37.149Z\"'"
         }
       },
       "indexes": {
@@ -964,7 +971,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-07T02:35:37.477Z\"'"
+          "default": "'\"2026-03-07T03:15:37.149Z\"'"
         },
         "updated_at": {
           "name": "updated_at",
@@ -972,7 +979,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'\"2026-03-07T02:35:37.477Z\"'"
+          "default": "'\"2026-03-07T03:15:37.149Z\"'"
         }
       },
       "indexes": {

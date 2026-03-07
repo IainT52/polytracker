@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1772850937483,
-      "tag": "0000_complete_bloodaxe",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1772852969900,
-      "tag": "0001_smart_forge",
+      "when": 1772853337154,
+      "tag": "0000_watery_moonstone",
       "breakpoints": true
     }
   ]

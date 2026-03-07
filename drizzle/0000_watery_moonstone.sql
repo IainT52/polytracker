@@ -22,6 +22,7 @@ CREATE TABLE `markets` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`condition_id` text NOT NULL,
 	`question` text NOT NULL,
+	`slug` text,
 	`description` text,
 	`outcomes` text NOT NULL,
 	`clob_token_ids` text DEFAULT '[]' NOT NULL,
@@ -29,8 +30,8 @@ CREATE TABLE `markets` (
 	`end_date` text,
 	`icon` text,
 	`resolved` integer DEFAULT false NOT NULL,
-	`created_at` integer DEFAULT '"2026-03-07T02:35:37.477Z"' NOT NULL,
-	`updated_at` integer DEFAULT '"2026-03-07T02:35:37.477Z"' NOT NULL
+	`created_at` integer DEFAULT '"2026-03-07T03:15:37.149Z"' NOT NULL,
+	`updated_at` integer DEFAULT '"2026-03-07T03:15:37.149Z"' NOT NULL
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `markets_condition_id_unique` ON `markets` (`condition_id`);--> statement-breakpoint
@@ -77,7 +78,7 @@ CREATE TABLE `trades` (
 	`action` text NOT NULL,
 	`price` real NOT NULL,
 	`shares` real NOT NULL,
-	`timestamp` integer DEFAULT '"2026-03-07T02:35:37.477Z"' NOT NULL,
+	`timestamp` integer DEFAULT '"2026-03-07T03:15:37.149Z"' NOT NULL,
 	`transaction_hash` text,
 	FOREIGN KEY (`wallet_id`) REFERENCES `wallets`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`market_id`) REFERENCES `markets`(`id`) ON UPDATE no action ON DELETE no action
@@ -110,8 +111,8 @@ CREATE TABLE `users` (
 	`alerts_enabled` integer DEFAULT false NOT NULL,
 	`paper_trading` integer DEFAULT true NOT NULL,
 	`encrypted_private_key` text,
-	`created_at` integer DEFAULT '"2026-03-07T02:35:37.476Z"' NOT NULL,
-	`updated_at` integer DEFAULT '"2026-03-07T02:35:37.476Z"' NOT NULL
+	`created_at` integer DEFAULT '"2026-03-07T03:15:37.149Z"' NOT NULL,
+	`updated_at` integer DEFAULT '"2026-03-07T03:15:37.149Z"' NOT NULL
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `users_telegram_id_unique` ON `users` (`telegram_id`);--> statement-breakpoint
@@ -136,8 +137,8 @@ CREATE TABLE `wallets` (
 	`realized_pnl` real,
 	`last_analyzed` integer,
 	`is_bot` integer DEFAULT false NOT NULL,
-	`created_at` integer DEFAULT '"2026-03-07T02:35:37.477Z"' NOT NULL,
-	`updated_at` integer DEFAULT '"2026-03-07T02:35:37.477Z"' NOT NULL
+	`created_at` integer DEFAULT '"2026-03-07T03:15:37.149Z"' NOT NULL,
+	`updated_at` integer DEFAULT '"2026-03-07T03:15:37.149Z"' NOT NULL
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `wallets_address_unique` ON `wallets` (`address`);--> statement-breakpoint
