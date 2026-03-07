@@ -71,10 +71,29 @@ export async function backfillMarket(conditionId: string) {
     return;
   }
 
-  const tokenIds = JSON.parse(market.clobTokenIds || '[]');
-  
+  let tokenIds = JSON.parse(market.clobTokenIds || '[]');
+
+  // Phase 24: Self-Healing Logic for Missing Tokens
   if (!Array.isArray(tokenIds) || tokenIds.length === 0) {
-     console.error(`[Subgraph] Market ${conditionId} has no CLOB token IDs mapped in DB. Cannot align outcomes.`);
+    console.log(`[Subgraph] Missing CLOB token IDs for ${conditionId}. Attempting self-healing...`);
+    try {
+      const res = await fetch(`https://clob.polymarket.com/markets/${conditionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.tokens && data.tokens.length > 0) {
+          tokenIds = data.tokens.map((t: any) => t.token_id);
+          await db.update(markets).set({ clobTokenIds: JSON.stringify(tokenIds) }).where(eq(markets.conditionId, conditionId));
+          console.log(`[Subgraph] ✅ Successfully repaired missing token IDs for ${conditionId}`);
+        }
+      }
+    } catch (e) {
+      console.error(`[Subgraph] Self-healing fetch failed for ${conditionId}:`, e);
+    }
+  }
+
+  // Final fallback
+  if (!Array.isArray(tokenIds) || tokenIds.length === 0) {
+    console.error(`[Subgraph] Market ${conditionId} STILL has no CLOB token IDs mapped. Cannot align outcomes.`);
      return;
   }
 
