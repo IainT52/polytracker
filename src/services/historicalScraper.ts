@@ -37,6 +37,7 @@ export async function scrapeHistoricalData() {
         [market] = await db.insert(markets).values({
           conditionId: marketData.conditionId,
           question: marketData.question,
+          slug: marketData.slug,
           description: marketData.description,
           outcomes: JSON.stringify(marketData.outcomes),
           clobTokenIds: JSON.stringify(marketData.clobTokenIds || []),
@@ -48,6 +49,7 @@ export async function scrapeHistoricalData() {
       } else {
         await db.update(markets)
           .set({
+            slug: marketData.slug,
             resolved: marketData.closed || !marketData.active,
             volume: marketData.volume,
             endDate: marketData.endDate,

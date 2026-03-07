@@ -37,6 +37,7 @@ export const markets = sqliteTable('markets', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   conditionId: text('condition_id').notNull().unique(),
   question: text('question').notNull(),
+  slug: text('slug'),
   description: text('description'),
   outcomes: text('outcomes').notNull(), // JSON stringified array e.g. '["Yes", "No"]'
   clobTokenIds: text('clob_token_ids').notNull().default('[]'),

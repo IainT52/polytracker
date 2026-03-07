@@ -65,7 +65,7 @@ export const MarketDetailsModal: React.FC<MarketDetailsModalProps> = ({ conditio
 
             <div className="flex items-center space-x-3 pt-4 border-t border-gray-800">
               <a 
-                href={`https://polymarket.com/markets?search=${encodeURIComponent(data.question)}`}
+                  href={data.slug ? `https://polymarket.com/event/${data.slug}` : `https://polymarket.com/markets?search=${encodeURIComponent(data.question)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-xl text-center transition-colors shadow-lg shadow-indigo-900/20"
