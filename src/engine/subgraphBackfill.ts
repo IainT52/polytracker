@@ -122,14 +122,34 @@ export async function backfillMarket(conditionId: string) {
     for (const raw of tradesList) {
       if (!raw.taker || !raw.transactionHash) continue;
 
-      // USDC is always asset_id "0". Find which token is the market outcome.
-      const isMakerUSDC = raw.makerAssetId === "0";
-      const outcomeAssetId = isMakerUSDC ? raw.takerAssetId : raw.makerAssetId;
+      // Ensure case-insensitive matching against token IDs
+      const normTokenIds = tokenIds.map((t: any) => t.toString().toLowerCase());
+      const makerId = raw.makerAssetId ? raw.makerAssetId.toString().toLowerCase() : "";
+      const takerId = raw.takerAssetId ? raw.takerAssetId.toString().toLowerCase() : "";
+      const makerIsOutcome = normTokenIds.includes(makerId);
+      const takerIsOutcome = normTokenIds.includes(takerId);
+      let sharesRaw, usdcRaw, outcomeAssetId;
+      let side: "BUY" | "SELL" = "BUY";
 
-      const usdcRaw = isMakerUSDC ? raw.makerAmountFilled : raw.takerAmountFilled;
-      const sharesRaw = isMakerUSDC ? raw.takerAmountFilled : raw.makerAmountFilled;
+      if (makerIsOutcome) {
+        outcomeAssetId = raw.makerAssetId;
+        sharesRaw = raw.makerAmountFilled;
+        usdcRaw = raw.takerAmountFilled;
+        side = "BUY"; // Taker is buying outcome tokens from Maker
+      } else if (takerIsOutcome) {
+        outcomeAssetId = raw.takerAssetId;
+        sharesRaw = raw.takerAmountFilled;
+        usdcRaw = raw.makerAmountFilled;
+        side = "SELL"; // Taker is selling outcome tokens to Maker
+      } else {
+        // Fallback if neither match
+        outcomeAssetId = raw.makerAssetId;
+        sharesRaw = raw.makerAmountFilled;
+        usdcRaw = raw.takerAmountFilled;
+        side = "BUY";
+      }
 
-      if (!sharesRaw || Number(sharesRaw) === 0) continue;
+      if (!sharesRaw || !usdcRaw || Number(sharesRaw) === 0) continue;
 
       const tradeData = {
         id: raw.id,
@@ -140,8 +160,7 @@ export async function backfillMarket(conditionId: string) {
         asset_id: outcomeAssetId,
         size: (Number(sharesRaw) / 1000000).toString(),
         price: (Number(usdcRaw) / Number(sharesRaw)).toString(),
-        // If taker pays USDC ("0"), taker is BUYING shares. Otherwise SELLING.
-        side: raw.takerAssetId === "0" ? "BUY" : "SELL"
+        side
       };
 
       const isValid = await processTradeForFilter(tradeData as any, true);
