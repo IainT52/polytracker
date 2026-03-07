@@ -116,11 +116,7 @@ export async function runWalletGrader() {
       grade = 'C';
     }
 
-    // Phase 11 Decay Discarding: A wallet MUST have a positive recentRoi30d to maintain Grade A/B
-    if ((grade === 'A' || grade === 'B') && recentRoi30d <= 0) {
-      console.log(`[Grader] Demoting decaying whale ${walletId} from ${grade} -> C (Recent ROI: ${recentRoi30d.toFixed(2)}%)`);
-      grade = 'C';
-    }
+    // Whales keep their lifetime Grade A/B regardless of temporary 30d drawdowns.
 
     updates.push({
       id: walletId,

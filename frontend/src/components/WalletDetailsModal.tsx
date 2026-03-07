@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface Trade {
   id: number;
@@ -81,6 +82,45 @@ export const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({ address,
                 </p>
               </div>
             </div>
+
+              {/* Phase 22: Performance Chart */}
+              <div className="mt-6 border-t border-gray-800 pt-6">
+                <h3 className="text-lg font-semibold text-gray-300 mb-4 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                  Net Cash Flow
+                </h3>
+                {data.performanceChart && data.performanceChart.length > 0 ? (
+                  <div className="h-48 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={data.performanceChart}>
+                        <defs>
+                          <linearGradient id="colorCashFlow" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#818cf8" stopOpacity={0.8} />
+                            <stop offset="95%" stopColor="#818cf8" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="displayDate" hide />
+                        <YAxis
+                          tickFormatter={(val) => `$${val > 1000 ? (val / 1000).toFixed(1) + 'k' : val}`}
+                          stroke="#4b5563"
+                          fontSize={10}
+                          domain={['auto', 'auto']}
+                        />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#111827', borderColor: '#374151', borderRadius: '0.5rem', color: '#e5e7eb' }}
+                          itemStyle={{ color: '#818cf8', fontWeight: 'bold' }}
+                          formatter={(value: any) => [`$${value.toLocaleString()}`, 'Cash Flow']}
+                        />
+                        <Area type="monotone" dataKey="cashFlow" stroke="#818cf8" fillOpacity={1} fill="url(#colorCashFlow)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="h-48 flex items-center justify-center border-2 border-dashed border-gray-800 rounded-xl text-gray-600 text-sm">
+                    Not enough historical data
+                  </div>
+                )}
+              </div>
 
             <div className="mt-8 border-t border-gray-800 pt-6">
               <h3 className="text-lg font-semibold text-gray-300 mb-4">50 Most Recent Trades</h3>

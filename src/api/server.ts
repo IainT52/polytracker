@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { db } from '../db';
 import { users, autoTradeConfigs, userPositions, paperPositions, markets, wallets, trades, walletCorrelations, syndicates, syndicateMembers } from '../db/schema';
-import { eq, desc, sql, gte, inArray } from 'drizzle-orm';
+import { eq, desc, asc, sql, gte, inArray } from 'drizzle-orm';
 import { ethers } from 'ethers';
 import { encryptKey } from '../bot/encryption';
 
@@ -453,9 +453,23 @@ export function startApiServer(port = 3001) {
         .limit(50)
         .all();
 
+      // Phase 22: Performance Chart running cash flow proxy
+      const allTrades = await db.select({ action: trades.action, shares: trades.shares, price: trades.price, timestamp: trades.timestamp }).from(trades).where(eq(trades.walletId, walletData.id)).orderBy(asc(trades.timestamp)).all();
+
+      let cumulative = 0;
+      const performanceChart = allTrades.map(t => {
+        const val = Number(t.price) * Number(t.shares);
+        cumulative += t.action === 'SELL' ? val : -val;
+        return {
+          displayDate: new Date(t.timestamp).toLocaleDateString(),
+          cashFlow: cumulative
+        };
+      });
+
       res.json({
         metadata: walletData,
-        recentTrades
+        recentTrades,
+        performanceChart
       });
     } catch (error) {
       console.error(error);
