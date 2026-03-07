@@ -5,6 +5,24 @@ import { processTradeForFilter } from '../services/filterService';
 
 const GOLDSKY_URL = 'https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/polymarket-orderbook-resync/prod/gn';
 
+async function withRetry<T>(operation: () => Promise<T>, maxRetries = 5, baseDelay = 1000): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await operation();
+    } catch (err: any) {
+      if (err.message && err.message.includes('SQLITE_BUSY') && attempt < maxRetries) {
+        attempt++;
+        const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 500;
+        console.warn(`[Subgraph] ⏳ SQLITE_BUSY lock detected. Retrying operation in ${Math.round(delay)}ms (Attempt ${attempt}/${maxRetries})...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 async function fetchSubgraphTrades(tokenIds: string[], beforeTimestamp?: string) {
   const tokenIdsStr = JSON.stringify(tokenIds);
   let whereClause = `or: [{ makerAssetId_in: ${tokenIdsStr} }, { takerAssetId_in: ${tokenIdsStr} }]`;
@@ -193,9 +211,11 @@ export async function backfillMarket(conditionId: string) {
       const walletWrites = Array.from(uniqueWalletsFound).map(address => ({ address }));
       const WALLET_CHUNK = 100;
       for (let i = 0; i < walletWrites.length; i += WALLET_CHUNK) {
-        await db.insert(wallets)
-          .values(walletWrites.slice(i, i + WALLET_CHUNK))
-          .onConflictDoNothing({ target: wallets.address });
+        await withRetry(() =>
+          db.insert(wallets)
+            .values(walletWrites.slice(i, i + WALLET_CHUNK))
+            .onConflictDoNothing({ target: wallets.address })
+        );
         await new Promise(r => setTimeout(r, 50)); // Prevent SQLITE_BUSY locks
       }
 
@@ -227,7 +247,9 @@ export async function backfillMarket(conditionId: string) {
       const TRADES_CHUNK = 100;
       for (let i = 0; i < mappedTradePayloads.length; i += TRADES_CHUNK) {
         const chunk = mappedTradePayloads.slice(i, i + TRADES_CHUNK);
-        await db.insert(trades).values(chunk).onConflictDoNothing({ target: trades.transactionHash });
+        await withRetry(() =>
+          db.insert(trades).values(chunk).onConflictDoNothing({ target: trades.transactionHash })
+        );
         await new Promise(r => setTimeout(r, 50)); // Release event loop
       }
 

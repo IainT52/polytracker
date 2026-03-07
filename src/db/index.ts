@@ -11,5 +11,6 @@ export const client = createClient({
 // Phase 13: Enable Write-Ahead Logging to prevent SQLITE_BUSY locked DB errors
 // This allows simultaneous read/writes between the Scraper and the API/Frontend
 client.execute('PRAGMA journal_mode = WAL;');
+client.execute('PRAGMA busy_timeout = 5000;');
 
 export const db = drizzle(client, { schema });
