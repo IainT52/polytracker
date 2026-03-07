@@ -116,7 +116,7 @@ export async function fetchMarketTrades(conditionId: string, maxTrades = 20000):
       payload = await fetchWithRetry(url);
     } catch (e: any) {
       if (e.message.includes('400')) {
-        console.warn(`[API] Reached Polymarket pagination limit for ${conditionId} at offset ${offset}. Saving fetched trades.`);
+        console.warn('[API] Reached API offset limit, gracefully saving fetched trades.');
         break; // Gracefully exit the loop and return what we have
       }
       throw e; // Re-throw if it's a 500 or other unexpected error

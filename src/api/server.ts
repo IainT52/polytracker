@@ -258,7 +258,8 @@ app.get('/api/stats/signals', async (req, res) => {
 
 // Phase 13: Cache heavy SQL grouping to prevent Event Loop/SQLite starvation
 let cachedIngestionStats: any[] = [];
-setInterval(async () => {
+
+async function refreshIngestionStats() {
   try {
     cachedIngestionStats = await db.select({
       marketId: markets.conditionId,
@@ -273,7 +274,10 @@ setInterval(async () => {
   } catch (error) {
     console.error('[API] Background Caching Failed:', error);
   }
-}, 30000);
+}
+
+refreshIngestionStats();
+setInterval(refreshIngestionStats, 30000);
 
 // Get Ingestion Stats 
 app.get('/api/stats/ingestion', async (req, res) => {
