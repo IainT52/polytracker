@@ -14,9 +14,14 @@ export const MarketDetailsModal: React.FC<MarketDetailsModalProps> = ({ conditio
       .then(res => res.json())
       .then(d => {
         setData(d);
-        setLoading(false);
       })
-      .catch(console.error);
+      .catch(err => {
+        console.error(err);
+        setData({ error: "Failed to load market (Server Offline)" });
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, [conditionId]);
 
   return (

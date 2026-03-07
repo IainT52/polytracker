@@ -488,15 +488,14 @@ function App() {
                     {ingestionStats.length === 0 ? (
                       <tr><td colSpan={3} className="py-8 text-center text-gray-500 italic">Scraper is offline or initializing...</td></tr>
                     ) : (
-                        <tbody>
-                          {ingestionStats.map((stat: any, i: number) => (
-                            <tr key={stat.marketId} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedMarket(stat.marketId)}>
-                              <td className="py-3 font-mono text-gray-400 text-sm truncate max-w-[100px]">{stat.marketId.substring(0, 10)}...</td>
-                              <td className="py-3 text-gray-200 truncate max-w-[300px]">{stat.question}</td>
-                              <td className="py-3 font-bold text-indigo-400">{stat.tradeCount.toLocaleString()}</td>
+                        ingestionStats.map((stat: any, i: number) => (
+                          <tr key={stat.marketId} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedMarket(stat.marketId)}>
+                            <td className="py-3 font-mono text-gray-400 text-sm truncate max-w-[100px]">{stat.marketId.substring(0, 10)}...</td>
+                            <td className="py-3 text-gray-200 truncate max-w-[300px]">{stat.question}</td>
+                            <td className="py-3 font-bold text-indigo-400">{stat.tradeCount.toLocaleString()}</td>
                         </tr>
-                      ))}
-                      </tbody>)}
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -520,15 +519,14 @@ function App() {
                   </thead>
                   <tbody className="divide-y divide-gray-800/50">
                     {topWallets.length === 0 ? (
-                      <tr><td colSpan={5} className="py-8 text-center text-gray-500 italic">No wallets graded yet. Waiting for scraper...</td></tr>
+                      <tr><td colSpan={6} className="py-8 text-center text-gray-500 italic">No wallets graded yet. Waiting for scraper...</td></tr>
                     ) : (
-                        <tbody>
-                          {topWallets.map((w: any, i: number) => (
-                            <tr key={w.id} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedWallet(w.address)}>
-                              <td className="py-3 font-mono text-gray-300">{w.address.substring(0, 6)}...{w.address.substring(38)}</td>
-                              <td className="py-3">
-                                <span className={`px-2 py-1 rounded text-xs font-bold ${w.grade === 'A' ? 'bg-green-500/20 text-green-400' : w.grade === 'B' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-700 text-gray-400'}`}>
-                                  Grade {w.grade}
+                        topWallets.map((w: any, i: number) => (
+                          <tr key={w.id} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedWallet(w.address)}>
+                            <td className="py-3 font-mono text-gray-300">{w.address.substring(0, 6)}...{w.address.substring(38)}</td>
+                            <td className="py-3">
+                              <span className={`px-2 py-1 rounded text-xs font-bold ${w.grade === 'A' ? 'bg-green-500/20 text-green-400' : w.grade === 'B' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-700 text-gray-400'}`}>
+                                Grade {w.grade}
                             </span>
                           </td>
                           <td className={`py-3 font-bold ${w.roi >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -544,8 +542,8 @@ function App() {
                             ${(w.totalVolume || 0).toLocaleString()}
                           </td>
                         </tr>
-                      ))}
-                      </tbody>)}
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

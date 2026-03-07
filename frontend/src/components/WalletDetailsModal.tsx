@@ -26,9 +26,14 @@ export const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({ address,
       .then(res => res.json())
       .then(d => {
         setData(d);
-        setLoading(false);
       })
-      .catch(console.error);
+      .catch(err => {
+        console.error(err);
+        setData({ error: "Failed to load wallet (Server Offline)" });
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, [address]);
 
   return (
