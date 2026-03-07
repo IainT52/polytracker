@@ -26,8 +26,8 @@ async function fetchSubgraphTrades(tokenIds: string[], beforeTimestamp?: string)
       ) {
         id
         transactionHash
-        maker
-        taker
+        maker { id }
+        taker { id }
         makerAssetId
         takerAssetId
         makerAmountFilled
@@ -120,7 +120,12 @@ export async function backfillMarket(conditionId: string) {
 
     // 2. Validate and Map
     for (const raw of tradesList) {
-      if (!raw.taker || !raw.transactionHash) continue;
+      const takerAddr = raw.taker?.id || raw.taker;
+      const makerAddr = raw.maker?.id || raw.maker;
+
+      if (!takerAddr || !raw.transactionHash) {
+        continue;
+      }
 
       // Ensure case-insensitive matching against token IDs
       const normTokenIds = tokenIds.map((t: any) => t.toString().toLowerCase());
@@ -146,13 +151,15 @@ export async function backfillMarket(conditionId: string) {
         continue;
       }
 
-      if (!sharesRaw || !usdcRaw || Number(sharesRaw) === 0) continue;
+      if (!sharesRaw || !usdcRaw || Number(sharesRaw) === 0) {
+        continue;
+      }
 
       const tradeData = {
         id: raw.id,
         transactionHash: raw.transactionHash,
-        taker: raw.taker,
-        maker: raw.maker,
+        taker: takerAddr,
+        maker: makerAddr,
         timestamp: raw.timestamp.toString(),
         asset_id: outcomeAssetId,
         size: (Number(sharesRaw) / 1000000).toString(),
