@@ -8,8 +8,12 @@ const GOLDSKY_URL = 'https://api.goldsky.com/api/public/project_cl6mb8i9h0003e20
 async function fetchSubgraphTrades(tokenIds: string[], beforeTimestamp?: string) {
   const tokenIdsStr = JSON.stringify(tokenIds);
   let whereClause = `or: [{ makerAssetId_in: ${tokenIdsStr} }, { takerAssetId_in: ${tokenIdsStr} }]`;
+
   if (beforeTimestamp) {
-    whereClause = `timestamp_lt: "${beforeTimestamp}", ${whereClause}`;
+    whereClause = `or: [
+      { makerAssetId_in: ${tokenIdsStr}, timestamp_lt: "${beforeTimestamp}" },
+      { takerAssetId_in: ${tokenIdsStr}, timestamp_lt: "${beforeTimestamp}" }
+    ]`;
   }
 
   const query = `
