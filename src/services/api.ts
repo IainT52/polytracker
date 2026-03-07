@@ -103,31 +103,20 @@ export async function fetchActiveMarkets(limit = 100, offset = 0): Promise<Marke
  */
 export async function fetchMarketTrades(conditionId: string, maxTrades = 20000): Promise<TradeData[]> {
   const mappedTrades: TradeData[] = [];
-  let cursor = '';
+  let offset = 0;
 
   // The API max limit per page is typically 500
   const limitPerPage = 500;
 
-  do {
-    let url = `${DATA_API_URL}/trades?market=${conditionId}&limit=${limitPerPage}`;
-    if (cursor) {
-      url += `&cursor=${cursor}`;
-    }
+  while (mappedTrades.length < maxTrades) {
+    let url = `${DATA_API_URL}/trades?market=${conditionId}&limit=${limitPerPage}&offset=${offset}`;
 
     const payload = await fetchWithRetry(url);
 
-    // The Data API returns an array directly if it's the last page or standard payload,
-    // or an object { data: [], next_cursor: '' } if paginated
     let rawTrades = [];
-    let nextCursor = '';
 
     if (Array.isArray(payload)) {
       rawTrades = payload;
-      cursor = ''; // End of data
-    } else if (payload && payload.data) {
-      rawTrades = payload.data;
-      nextCursor = payload.next_cursor || '';
-      cursor = nextCursor;
     } else {
       break; // Unknown format, safe exit
     }
@@ -151,13 +140,16 @@ export async function fetchMarketTrades(conditionId: string, maxTrades = 20000):
       });
     }
 
-    // Safety checks for deep pagination
-    if (mappedTrades.length >= maxTrades) break;
+    // Increment offset
+    offset += rawTrades.length;
 
     // Tiny artificial delay between pages to ensure we don't trigger IP burn
-    if (cursor && cursor !== 'LTE=') await wait(100);
+    if (rawTrades.length === limitPerPage) await wait(100);
 
-  } while (cursor && cursor !== 'LTE='); // Polymarket end cursor often looks like LTE= or just empty
+    // If we received fewer trades than the limit, we've hit the end of the history
+    if (rawTrades.length < limitPerPage) break;
+
+  }
 
   return mappedTrades.slice(0, maxTrades);
 }
