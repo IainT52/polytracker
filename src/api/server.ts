@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { db } from '../db';
 import { users, autoTradeConfigs, userPositions, paperPositions, markets, wallets, trades, walletCorrelations, syndicates, syndicateMembers } from '../db/schema';
-import { eq, desc, asc, sql, gte, inArray } from 'drizzle-orm';
+import { eq, desc, asc, sql, gte, inArray, and } from 'drizzle-orm';
 import { ethers } from 'ethers';
 import { encryptKey } from '../bot/encryption';
 
@@ -196,14 +196,35 @@ app.post('/api/backtest/:telegramId', async (req, res) => {
   }
 });
 
-// Get Top Rated Wallets
+// Get Top Rated Wallets with Dynamic Filters
 app.get('/api/stats/wallets', async (req, res) => {
   try {
+    const { grade, minTrades, minVolume, minWinRate, minRoi } = req.query;
+
+    const conditions = [eq(wallets.isBot, false)];
+
+    if (grade && grade !== 'ALL') {
+      conditions.push(eq(wallets.grade, String(grade)));
+    }
+    if (minTrades && !isNaN(Number(minTrades))) {
+      conditions.push(gte(wallets.totalTrades, Number(minTrades)));
+    }
+    if (minVolume && !isNaN(Number(minVolume))) {
+      conditions.push(gte(wallets.totalVolume, Number(minVolume)));
+    }
+    if (minWinRate && !isNaN(Number(minWinRate))) {
+      conditions.push(gte(wallets.winRate, Number(minWinRate)));
+    }
+    if (minRoi && !isNaN(Number(minRoi))) {
+      conditions.push(gte(wallets.roi, Number(minRoi)));
+    }
+
     const topWallets = await db.select()
       .from(wallets)
-      .where(eq(wallets.isBot, false))
+      .where(and(...conditions))
       .orderBy(desc(wallets.roi))
       .limit(50);
+
     res.json(topWallets);
   } catch (error) {
     console.error(error);

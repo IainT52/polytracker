@@ -38,6 +38,8 @@ function App() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [backtestData, setBacktestData] = useState<any[]>([]);
   const [topWallets, setTopWallets] = useState<any[]>([]);
+  const [walletFilter, setWalletFilter] = useState({ grade: 'ALL', minTrades: 0, minVolume: 0, minWinRate: 0, minRoi: 0 });
+
   const [signalStats, setSignalStats] = useState<any>(null);
   const [ingestionStats, setIngestionStats] = useState<any>({ stats: [], subMarketsScraped: 0, parentMarketsScraped: 0, totalTrades: 0 });
   const [saving, setSaving] = useState(false);
@@ -70,13 +72,6 @@ function App() {
       .then(res => res.json())
       .then(data => {
         if (!data.error) setPositions(data);
-      })
-      .catch(console.error);
-
-    fetch(`${API_URL}/stats/wallets`)
-      .then(res => res.json())
-      .then(data => {
-        if (!data.error) setTopWallets(data);
       })
       .catch(console.error);
 
@@ -114,6 +109,17 @@ function App() {
     }, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
   }, [telegramId]);
+
+  // Phase 30: Dedicated Top Wallets Fetcher
+  useEffect(() => {
+    const params = new URLSearchParams(walletFilter as any).toString();
+    fetch(`${API_URL}/stats/wallets?${params}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.error) setTopWallets(data);
+      })
+      .catch(console.error);
+  }, [walletFilter]);
 
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -552,6 +558,70 @@ function App() {
                 <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                 Top Graded Wallets
               </h2>
+
+              {/* Phase 30: Dynamic Wholesale Filters */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Grade</label>
+                  <select
+                    title="Filter by Wallet Grade"
+                    value={walletFilter.grade}
+                    onChange={(e) => setWalletFilter(prev => ({ ...prev, grade: e.target.value }))}
+                    className="bg-gray-950 border border-gray-800 rounded-md p-2 text-sm text-gray-200 outline-none focus:border-purple-500 transition-colors"
+                  >
+                    <option value="ALL">All Grades</option>
+                    <option value="A">Grade A</option>
+                    <option value="B">Grade B</option>
+                    <option value="C">Grade C</option>
+                    <option value="D">Grade D</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Min Trades</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={walletFilter.minTrades || ''}
+                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minTrades: Number(e.target.value) }))}
+                    className="bg-gray-950 border border-gray-800 rounded-md p-2 text-sm text-gray-200 outline-none focus:border-purple-500 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Min Volume ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={walletFilter.minVolume || ''}
+                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minVolume: Number(e.target.value) }))}
+                    className="bg-gray-950 border border-gray-800 rounded-md p-2 text-sm text-gray-200 outline-none focus:border-purple-500 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Min Win Rate (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="0"
+                    value={walletFilter.minWinRate || ''}
+                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minWinRate: Number(e.target.value) }))}
+                    className="bg-gray-950 border border-gray-800 rounded-md p-2 text-sm text-gray-200 outline-none focus:border-purple-500 transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Min ROI (%)</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={walletFilter.minRoi || ''}
+                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minRoi: Number(e.target.value) }))}
+                    className="bg-gray-950 border border-gray-800 rounded-md p-2 text-sm text-gray-200 outline-none focus:border-purple-500 transition-colors"
+                  />
+                </div>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead>
