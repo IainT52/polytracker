@@ -630,7 +630,8 @@ function App() {
                       <th className="pb-3 font-medium uppercase tracking-wider text-xs">Grade</th>
                       <th className="pb-3 font-medium uppercase tracking-wider text-xs">ROI</th>
                       <th className="pb-3 font-medium uppercase tracking-wider text-xs">Win Rate</th>
-                      <th className="pb-3 font-medium uppercase tracking-wider text-xs text-right">Last Active</th>
+                      <th className="pb-3 font-medium uppercase tracking-wider text-xs">Total Trades</th>
+                      <th className="pb-3 font-medium uppercase tracking-wider text-xs text-right">Volume</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800/50">
@@ -641,21 +642,21 @@ function App() {
                           <tr key={w.id} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedWallet(w.address)}>
                             <td className="py-3 font-mono text-gray-300">{w.address.substring(0, 6)}...{w.address.substring(38)}</td>
                             <td className="py-3">
-                              <span className={`px-2 py-1 rounded text-xs font-bold ${w.grade === 'A' ? 'bg-green-500/20 text-green-400' : w.grade === 'B' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-700 text-gray-400'}`}>
-                                Grade {w.grade}
+                              <span className={`px-2 py-1 rounded text-xs font-bold ${w.grade === 'A' ? 'bg-green-500/20 text-green-400' : w.grade === 'B' ? 'bg-blue-500/20 text-blue-400' : w.grade === 'C' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-700 text-gray-400'}`}>
+                                Grade {w.grade || 'N/A'}
                             </span>
                           </td>
                           <td className={`py-3 font-bold ${w.roi >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {w.roi ? w.roi.toFixed(1) : '0'}%
                           </td>
-                          <td className="py-3 text-gray-300">
-                            {w.recentRoi30d !== null ? `${w.recentRoi30d.toFixed(1)}%` : 'N/A'}
+                            <td className="py-3 text-gray-300 font-bold">
+                              {w.winRate ? w.winRate.toFixed(1) : '0'}%
                           </td>
-                          <td className="py-3 font-bold text-gray-200">
-                            ${(w.realizedPnL || 0).toLocaleString()}
+                            <td className="py-3 text-gray-400 font-medium">
+                              {(w.totalTrades || 0).toLocaleString()}
                           </td>
-                          <td className="py-3 text-gray-400">
-                            ${(w.totalVolume || 0).toLocaleString()}
+                            <td className="py-3 font-bold text-gray-200 text-right">
+                              ${(w.totalVolume || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </td>
                         </tr>
                       ))
