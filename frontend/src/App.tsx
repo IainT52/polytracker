@@ -39,7 +39,7 @@ function App() {
   const [backtestData, setBacktestData] = useState<any[]>([]);
   const [topWallets, setTopWallets] = useState<any[]>([]);
   const [signalStats, setSignalStats] = useState<any>(null);
-  const [ingestionStats, setIngestionStats] = useState<any>({ stats: [], subMarketsScraped: 0, parentMarketsScraped: 0 });
+  const [ingestionStats, setIngestionStats] = useState<any>({ stats: [], subMarketsScraped: 0, parentMarketsScraped: 0, totalTrades: 0 });
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [runningBacktest, setRunningBacktest] = useState(false);
@@ -508,12 +508,17 @@ function App() {
                   <svg className="w-5 h-5 text-blue-400 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                   Live Ingestion Status
                 </h2>
-                <span className="bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full text-xs font-medium border border-blue-500/20">
-                  Total Markets Scraped: {ingestionStats.parentMarketsScraped || 0}
-                </span>
-                <span className="bg-gray-800 text-gray-400 px-3 py-1 rounded-full text-xs font-medium border border-gray-700">
-                  Sub-Markets: {ingestionStats.subMarketsScraped || 0}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="bg-indigo-500/10 text-indigo-400 px-3 py-1 rounded-full text-xs font-medium border border-indigo-500/20">
+                    Total Trades: {ingestionStats.totalTrades?.toLocaleString() || 0}
+                  </span>
+                  <span className="bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full text-xs font-medium border border-blue-500/20">
+                    Total Markets Scraped: {ingestionStats.parentMarketsScraped || 0}
+                  </span>
+                  <span className="bg-gray-800 text-gray-400 px-3 py-1 rounded-full text-xs font-medium border border-gray-700">
+                    Sub-Markets: {ingestionStats.subMarketsScraped || 0}
+                  </span>
+                </div>
               </div>
 
               <div className="overflow-x-auto max-h-64 overflow-y-auto pr-2 custom-scrollbar">

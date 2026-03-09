@@ -300,10 +300,12 @@ setInterval(refreshIngestionStats, 30000);
 app.get('/api/stats/ingestion', async (req, res) => {
   try {
     const parentMarketsScraped = new Set(cachedIngestionStats.map(s => s.question)).size;
+    const totalTrades = cachedIngestionStats.reduce((acc, curr) => acc + curr.tradeCount, 0);
     res.json({
       stats: cachedIngestionStats,
       subMarketsScraped: cachedIngestionStats.length,
-      parentMarketsScraped
+      parentMarketsScraped,
+      totalTrades
     });
   } catch (error) {
     console.error(error);
