@@ -10,7 +10,7 @@ export const MarketDetailsModal: React.FC<MarketDetailsModalProps> = ({ conditio
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`http://localhost:3001/api/markets/${conditionId}`)
+    fetch(`http://127.0.0.1:4000/api/markets/${conditionId}`)
       .then(res => res.json())
       .then(d => {
         setData(d);

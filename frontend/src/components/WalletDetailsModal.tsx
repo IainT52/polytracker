@@ -14,7 +14,7 @@ export const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({ address,
 
   useEffect(() => {
     setLoading(true);
-    fetch(`http://localhost:3001/api/wallets/${address}?page=${page}&limit=50`)
+    fetch(`http://127.0.0.1:4000/api/wallets/${address}?page=${page}&limit=50`)
       .then(res => res.json())
       .then(d => {
         setData(d);
