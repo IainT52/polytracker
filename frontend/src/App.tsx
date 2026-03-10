@@ -30,7 +30,7 @@ interface Position {
   realizedPnL?: string;
 }
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = 'http://127.0.0.1:3001/api';
 
 function App() {
   const [telegramId, setTelegramId] = useState<string>(localStorage.getItem('telegramId') || '');
@@ -64,13 +64,21 @@ function App() {
     if (!telegramId) return;
 
     setError(null);
+    console.log(`[UI] Fetching Config for: ${telegramId}...`);
     fetch(`${API_URL}/config/${telegramId}`)
-      .then(res => res.json())
+      .then(res => {
+        console.log('[UI] Config Response received:', res.status);
+        return res.json();
+      })
       .then(data => {
+        console.log('[UI] Config Data payload:', data);
         if (data.error) setError(data.error);
         else setConfig(data);
       })
-      .catch(err => setError(err.message));
+      .catch(err => {
+        console.error('[UI] Config Fetch Error:', err.message);
+        setError(err.message);
+      });
 
     fetch(`${API_URL}/positions/${telegramId}`)
       .then(res => res.json())

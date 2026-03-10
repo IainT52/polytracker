@@ -13,8 +13,11 @@ app.use(express.json());
 // Get dashboard config for a Telegram User ID
 app.get('/api/config/:telegramId', async (req, res) => {
   const telegramId = req.params.telegramId;
+  console.log(`[API] Endpoint /api/config reached for telegram ID: ${telegramId}`);
   try {
+    console.log(`[API] Attempting db.select().from(users)...`);
     let user = await db.select().from(users).where(eq(users.telegramId, telegramId)).get();
+    console.log(`[API] db.select().from(users) completed.`);
     if (!user) {
       console.log(`[API] Auto-creating demo user for telegram ID: ${telegramId}`);
       const wallet = ethers.Wallet.createRandom();
@@ -621,7 +624,7 @@ export function startApiServer(port = 3001) {
     }
   });
 
-  app.listen(port, () => {
-    console.log(`🌐 Dashboard API Server running on http://localhost:${port}`);
+  app.listen(port, '127.0.0.1', () => {
+    console.log(`🌐 Dashboard API Server running on http://127.0.0.1:${port}`);
   });
 }

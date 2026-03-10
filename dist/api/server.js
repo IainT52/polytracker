@@ -17,8 +17,11 @@ app.use(express_1.default.json());
 // Get dashboard config for a Telegram User ID
 app.get('/api/config/:telegramId', async (req, res) => {
     const telegramId = req.params.telegramId;
+    console.log(`[API] Endpoint /api/config reached for telegram ID: ${telegramId}`);
     try {
+        console.log(`[API] Attempting db.select().from(users)...`);
         let user = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.telegramId, telegramId)).get();
+        console.log(`[API] db.select().from(users) completed.`);
         if (!user) {
             console.log(`[API] Auto-creating demo user for telegram ID: ${telegramId}`);
             const wallet = ethers_1.ethers.Wallet.createRandom();
@@ -574,7 +577,7 @@ function startApiServer(port = 3001) {
             res.status(500).json({ error: 'Internal server error' });
         }
     });
-    app.listen(port, () => {
-        console.log(`🌐 Dashboard API Server running on http://localhost:${port}`);
+    app.listen(port, '127.0.0.1', () => {
+        console.log(`🌐 Dashboard API Server running on http://127.0.0.1:${port}`);
     });
 }
