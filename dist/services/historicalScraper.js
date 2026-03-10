@@ -1,0 +1,221 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.isShuttingDown = void 0;
+exports.signalScraperShutdown = signalScraperShutdown;
+exports.scrapeHistoricalData = scrapeHistoricalData;
+const api_1 = require("./api");
+const db_1 = require("../db");
+const schema_1 = require("../db/schema");
+const drizzle_orm_1 = require("drizzle-orm");
+const filterService_1 = require("./filterService");
+const realtimeListener_1 = require("./realtimeListener");
+const p_limit_1 = __importDefault(require("p-limit"));
+exports.isShuttingDown = false;
+function signalScraperShutdown() {
+    console.log('[Scraper] Shutdown signal received. Halting new ingestion intervals...');
+    exports.isShuttingDown = true;
+}
+async function scrapeHistoricalData() {
+    console.log('[Scraper] Starting Phase 16 Continuous Delta Engine...');
+    while (!exports.isShuttingDown) {
+        try {
+            // 1. Fetch Top 1000 active markets globally sorted by Volume
+            const activeMarkets = await (0, api_1.fetchActiveMarkets)();
+            const qualifiedMarkets = activeMarkets.filter(m => m.volume >= 50000);
+            console.log(`[Scraper] Found ${qualifiedMarkets.length} high-liquidity markets (>$50k) to process.`);
+            let totalTradesIngested = 0;
+            // 2. Concurrency Limiter: Analyze 2 markets simultaneously (reduced for stability)
+            const marketConcurrencyLimit = (0, p_limit_1.default)(2);
+            const scrapeMarket = async (marketData) => {
+                if (exports.isShuttingDown)
+                    return;
+                try {
+                    // 2. Insert or update market
+                    let market = await db_1.db.select().from(schema_1.markets).where((0, drizzle_orm_1.eq)(schema_1.markets.conditionId, marketData.conditionId)).get();
+                    if (!market) {
+                        [market] = await db_1.db.insert(schema_1.markets).values({
+                            conditionId: marketData.conditionId,
+                            question: marketData.question,
+                            slug: marketData.slug,
+                            description: marketData.description,
+                            outcomes: JSON.stringify(marketData.outcomes),
+                            clobTokenIds: JSON.stringify(marketData.clobTokenIds || []),
+                            volume: marketData.volume,
+                            endDate: marketData.endDate,
+                            icon: marketData.icon,
+                            resolved: marketData.closed || !marketData.active,
+                        }).returning();
+                    }
+                    else {
+                        await db_1.db.update(schema_1.markets)
+                            .set({
+                            slug: marketData.slug,
+                            resolved: marketData.closed || !marketData.active,
+                            volume: marketData.volume,
+                            endDate: marketData.endDate,
+                            icon: marketData.icon
+                        })
+                            .where((0, drizzle_orm_1.eq)(schema_1.markets.conditionId, marketData.conditionId));
+                    }
+                    // Phase 15: Automatically subscribe to this live market on the WebSocket
+                    (0, realtimeListener_1.subscribeToMarket)(marketData.conditionId);
+                    // Phase 16 Delta Check: Find most recent trade for this market BEFORE we ask the API to paginate deep history
+                    const latestTrade = await db_1.db.select({ ts: schema_1.trades.timestamp }).from(schema_1.trades).where((0, drizzle_orm_1.eq)(schema_1.trades.marketId, market.id)).orderBy((0, drizzle_orm_1.desc)(schema_1.trades.timestamp)).limit(1).get();
+                    const latestTs = latestTrade ? latestTrade.ts.getTime() : 0;
+                    // 3. Fetch Deep Paginated trades for market (Up to 20,000)
+                    console.log(`[Scraper][Worker] Fetching deep pagination for market ${marketData.conditionId.substring(0, 8)}...`);
+                    const tradesList = await (0, api_1.fetchMarketTrades)(marketData.conditionId, 20000, latestTs);
+                    console.log(`[Scraper][Worker] Fetched ${tradesList.length} historical trades for ${marketData.conditionId.substring(0, 8)}. Filtering...`);
+                    // 4. Batch Processing to avoid N+1 SQLite connection freezes
+                    const validTradesToInsert = [];
+                    const uniqueWalletsFound = new Set();
+                    const tokenIds = JSON.parse(market.clobTokenIds || '[]');
+                    let reachedExistingData = false;
+                    // Phase 15: Process Filters using Promise.allSettled for isolated resilience
+                    const PROCESS_CHUNK_SIZE = 500;
+                    for (let i = 0; i < tradesList.length; i += PROCESS_CHUNK_SIZE) {
+                        if (exports.isShuttingDown) {
+                            console.log('[Scraper][Worker] Aborting valid ingestion loop due to shutdown.');
+                            break;
+                        }
+                        const chunk = tradesList.slice(i, i + PROCESS_CHUNK_SIZE);
+                        const results = await Promise.allSettled(chunk.map(async (tradeData) => {
+                            const tradeTs = parseInt(tradeData.timestamp) * 1000;
+                            if (tradeTs <= latestTs) {
+                                reachedExistingData = true;
+                                return null; // Skip old historical data
+                            }
+                            const isValid = await (0, filterService_1.processTradeForFilter)(tradeData, true);
+                            if (isValid) {
+                                return {
+                                    marketId: market.id,
+                                    outcomeIndex: tokenIds.indexOf(tradeData.asset_id) !== -1 ? tokenIds.indexOf(tradeData.asset_id) : (tradeData.outcome || 0),
+                                    action: tradeData.side,
+                                    price: parseFloat(tradeData.price),
+                                    shares: parseFloat(tradeData.size),
+                                    timestamp: new Date(tradeTs),
+                                    transactionHash: tradeData.transactionHash,
+                                    _tempWalletAddr: tradeData.taker
+                                };
+                            }
+                            return null;
+                        }));
+                        for (const result of results) {
+                            if (result.status === 'fulfilled' && result.value) {
+                                uniqueWalletsFound.add(result.value._tempWalletAddr);
+                                validTradesToInsert.push(result.value);
+                            }
+                            else if (result.status === 'rejected') {
+                                // Silently absorb specific provider timeouts without blowing up the batch
+                                console.warn(`[Scraper][Worker] Trade validation rejected:`, result.reason?.message || result.reason);
+                            }
+                        }
+                        if (reachedExistingData) {
+                            console.log(`[Scraper][Worker] Reached existing trades for ${marketData.conditionId.substring(0, 8)}. Breaking pagination loop.`);
+                            break;
+                        }
+                    }
+                    if (validTradesToInsert.length === 0) {
+                        console.log(`[Scraper][Worker] No new trades for market ${marketData.conditionId.substring(0, 8)}. Skipping DB operations.`);
+                        return;
+                    }
+                    // 5. Bulk ensure wallets exist using chunked array inserts
+                    const uniqueWalletAddresses = Array.from(uniqueWalletsFound);
+                    const WALLET_CHUNK_SIZE = 500; // max variables 999
+                    for (let i = 0; i < uniqueWalletAddresses.length; i += WALLET_CHUNK_SIZE) {
+                        const chunk = uniqueWalletAddresses.slice(i, i + WALLET_CHUNK_SIZE).map(address => ({ address }));
+                        if (chunk.length > 0) {
+                            // Wrapped in pseudo-retry for locked DBs on parallel workers
+                            let retries = 3;
+                            while (retries > 0) {
+                                try {
+                                    await db_1.db.insert(schema_1.wallets).values(chunk).onConflictDoNothing({ target: schema_1.wallets.address });
+                                    break;
+                                }
+                                catch (err) {
+                                    retries--;
+                                    if (retries === 0)
+                                        throw err;
+                                    await new Promise(res => setTimeout(res, 250 + Math.random() * 500));
+                                }
+                            }
+                        }
+                    }
+                    // Fetch all needed wallet IDs in a dictionary map cache (ONLY for the ones we discovered)
+                    const dbWallets = [];
+                    const MAX_SQLITE_VARIABLES = 900; // Safe limit below 999
+                    for (let i = 0; i < uniqueWalletAddresses.length; i += MAX_SQLITE_VARIABLES) {
+                        const chunk = uniqueWalletAddresses.slice(i, i + MAX_SQLITE_VARIABLES);
+                        if (chunk.length > 0) {
+                            const found = await db_1.db.select({ id: schema_1.wallets.id, address: schema_1.wallets.address })
+                                .from(schema_1.wallets)
+                                .where((0, drizzle_orm_1.inArray)(schema_1.wallets.address, chunk))
+                                .all();
+                            dbWallets.push(...found);
+                        }
+                    }
+                    const walletMap = new Map(dbWallets.map(w => [w.address, w.id]));
+                    // 6. DB Bulk Insert using Array Inserts inside Transactions
+                    const CHUNK_SIZE = 100; // 100 rows * 8 columns = 800 parameters (safe limit < 999)
+                    for (let i = 0; i < validTradesToInsert.length; i += CHUNK_SIZE) {
+                        const chunk = validTradesToInsert.slice(i, i + CHUNK_SIZE).map(t => {
+                            return {
+                                walletId: walletMap.get(t._tempWalletAddr),
+                                marketId: t.marketId,
+                                outcomeIndex: t.outcomeIndex,
+                                action: t.action,
+                                price: t.price,
+                                shares: t.shares,
+                                timestamp: t.timestamp,
+                                transactionHash: t.transactionHash
+                            };
+                        });
+                        if (chunk.length > 0) {
+                            let retries = 3;
+                            while (retries > 0) {
+                                try {
+                                    // Removed useless db.transaction wrapper to prevent @libsql native driver segfaults during aggressive C++ allocations
+                                    await db_1.db.insert(schema_1.trades).values(chunk).onConflictDoNothing({ target: schema_1.trades.transactionHash });
+                                    break;
+                                }
+                                catch (err) {
+                                    retries--;
+                                    if (retries === 0)
+                                        throw err;
+                                    await new Promise(res => setTimeout(res, 250 + Math.random() * 500));
+                                }
+                            }
+                        }
+                    }
+                    totalTradesIngested += validTradesToInsert.length;
+                    console.log(`[Scraper][Worker] Completed ${marketData.conditionId.substring(0, 8)}. Inserted ${validTradesToInsert.length} new delta trades.`);
+                }
+                catch (error) {
+                    console.error(`[Scraper][Worker] Error processing market ${marketData.conditionId}:`, error);
+                }
+            };
+            try {
+                const scraperPromises = qualifiedMarkets.map(m => marketConcurrencyLimit(() => scrapeMarket(m)));
+                console.log('[Scraper] Awaiting all worker maps...');
+                await Promise.allSettled(scraperPromises);
+                console.log(`[Scraper] Delta cycle complete. Total new trades ingested: ${totalTradesIngested}`);
+            }
+            catch (err) {
+                console.error('[Scraper] Fatal error in global concurrency loop:', err);
+            }
+            // Phase 16: Sleep Continuous engine for 15 minutes before waking up to scrape Deltas again.
+            if (!exports.isShuttingDown) {
+                console.log('[Scraper] Cycle complete. Sleeping engine for 15 minutes...');
+                await new Promise(res => setTimeout(res, 15 * 60 * 1000));
+            }
+        }
+        catch (e) {
+            console.error('[Scraper] Fatal error in outer cycle loop:', e);
+            if (!exports.isShuttingDown)
+                await new Promise(res => setTimeout(res, 60000));
+        }
+    } // Closes while(!isShuttingDown)
+}

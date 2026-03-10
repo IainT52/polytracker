@@ -419,26 +419,37 @@ app.get('/api/stats/conviction', async (req, res) => {
     const marketConvictions = new Map<number, { marketId: string, question: string, favoredOutcomeIndex: number, netConviction: number, wallets: any[] }>();
 
     for (const mId of activeMarketIds) {
-      const positiveHolders = lifetimePositions.filter(p => !!p && p.marketId === mId && p.netShares > 0 && smartMoneyIds.includes(p.walletId));
+      const positiveHolders = lifetimePositions.filter(p => !!p && p.marketId === mId && p.netShares > 1 && smartMoneyIds.includes(p.walletId));
       if (positiveHolders.length === 0) continue;
 
-      const outcome0 = positiveHolders.filter(p => p.outcomeIndex === 0);
-      const outcome1 = positiveHolders.filter(p => p.outcomeIndex === 1);
+      const holdersByOutcome: Record<number, typeof positiveHolders> = {};
+      for (const p of positiveHolders) {
+        if (!holdersByOutcome[p.outcomeIndex]) holdersByOutcome[p.outcomeIndex] = [];
+        holdersByOutcome[p.outcomeIndex].push(p);
+      }
 
-      const netConviction = Math.abs(outcome0.length - outcome1.length);
+      const groupedOutcomes = Object.entries(holdersByOutcome).map(([oIdxStr, holders]) => ({
+        outcomeIndex: Number(oIdxStr),
+        holdersCount: holders.length,
+        holders
+      }));
+
+      groupedOutcomes.sort((a, b) => b.holdersCount - a.holdersCount);
+
+      const favoredGroup = groupedOutcomes[0];
+      const secondFavoredGroup = groupedOutcomes.length > 1 ? groupedOutcomes[1] : { holdersCount: 0 };
+
+      const netConviction = favoredGroup.holdersCount - secondFavoredGroup.holdersCount;
       if (netConviction === 0) continue;
-
-      const isZeroFavored = outcome0.length > outcome1.length;
-      const favoredList = isZeroFavored ? outcome0 : outcome1;
 
       const marketMeta = activeMarketMap.get(mId)!;
 
       marketConvictions.set(mId, {
         marketId: marketMeta.conditionId,
         question: marketMeta.question,
-        favoredOutcomeIndex: isZeroFavored ? 0 : 1,
+        favoredOutcomeIndex: favoredGroup.outcomeIndex,
         netConviction,
-        wallets: favoredList.map(h => {
+        wallets: favoredGroup.holders.map(h => {
           const w = smartMoneyMap.get(h.walletId)!;
           return {
             address: w.address,
