@@ -68,6 +68,7 @@ export interface MarketMetadata {
   icon: string;
   active: boolean;
   closed: boolean;
+  outcomePrices?: string[];
 }
 
 export interface TradeData {
@@ -111,6 +112,7 @@ export async function fetchActiveMarkets(limit = 1000, offset = 0): Promise<Mark
           icon: m.icon || '',
           active: m.active,
           closed: m.closed,
+          outcomePrices: JSON.parse(m.outcomePrices || '[]'),
         });
       }
     }

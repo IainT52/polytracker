@@ -47,6 +47,7 @@ export const markets = sqliteTable('markets', {
   endDate: text('end_date'),
   icon: text('icon'),
   resolved: integer('resolved', { mode: 'boolean' }).default(false).notNull(),
+  resolvedOutcomeIndex: integer('resolved_outcome_index'), // Index of the winning outcome
   alphaSignalFired: integer('alpha_signal_fired', { mode: 'boolean' }).default(false).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(new Date()),

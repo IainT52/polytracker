@@ -36,6 +36,13 @@
       "when": 1773110596295,
       "tag": "0004_long_joseph",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1773138834176,
+      "tag": "0005_add_resolved_outcome_index",
+      "breakpoints": true
     }
   ]
 }

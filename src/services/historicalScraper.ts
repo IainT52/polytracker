@@ -4,6 +4,7 @@ import { markets, trades, wallets } from '../db/schema';
 import { eq, inArray, desc } from 'drizzle-orm';
 import { processTradeForFilter } from './filterService';
 import { subscribeToMarket } from './realtimeListener';
+import { processSyntheticRedemptions } from '../engine/redemptionEngine';
 import pLimit from 'p-limit';
 
 export let isShuttingDown = false;
@@ -49,17 +50,54 @@ export async function scrapeHistoricalData() {
           resolved: marketData.closed || !marketData.active,
         }).returning();
       } else {
+        // If the market is now closed but wasn't before, OR it's already closed but missing resolvedOutcomeIndex
+        const isNowResolved = marketData.closed || !marketData.active;
+        const wasResolved = market.resolved;
+
         await db.update(markets)
           .set({
             slug: marketData.slug,
             category: marketData.category,
             tags: JSON.stringify(marketData.tags || []),
-            resolved: marketData.closed || !marketData.active,
+            resolved: isNowResolved,
             volume: marketData.volume,
             endDate: marketData.endDate,
             icon: marketData.icon
           })
           .where(eq(markets.conditionId, marketData.conditionId));
+
+        // Phase 44: Final Resolution & Synthetic Redemption Injection
+        if (isNowResolved && (!wasResolved || market.resolvedOutcomeIndex === null)) {
+          try {
+            const prices = marketData.outcomePrices || [];
+            if (prices.length > 0) {
+              // Find index closest to 1.0 (Polymarket resolution mechanic)
+              let winningIndex = -1;
+              let maxPrice = -1;
+
+              prices.forEach((pStr: string, idx: number) => {
+                const p = parseFloat(pStr);
+                if (p > maxPrice) {
+                  maxPrice = p;
+                  winningIndex = idx;
+                }
+              });
+
+              if (winningIndex !== -1 && maxPrice > 0.9) { // Safety threshold for resolution
+                console.log(`[Scraper] Market ${market.conditionId.substring(0, 8)} resolved! Outcome ${winningIndex} won. Triggering redemptions...`);
+                
+                await db.update(markets)
+                  .set({ resolvedOutcomeIndex: winningIndex })
+                  .where(eq(markets.id, market.id));
+
+                // Call resolution engine (Async)
+                processSyntheticRedemptions(market.id, market.conditionId, winningIndex, marketData.endDate);
+              }
+            }
+          } catch (err: any) {
+            console.error(`[Scraper] Logic error resolving market ${market.id}:`, err.message);
+          }
+        }
       }
 
       // Phase 15: Automatically subscribe to this live market on the WebSocket
