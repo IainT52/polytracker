@@ -1,4 +1,4 @@
-import { db } from '../db';
+import { db, setupDbSync } from '../db';
 import { walletCorrelations } from '../db/schema';
 
 async function seed() {
@@ -21,4 +21,12 @@ async function seed() {
     }
   }
 }
-seed().then(() => process.exit(0));
+setupDbSync().then(() => {
+  seed().then(() => process.exit(0)).catch(err => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
+}).catch(err => {
+  console.error('DB setup failed:', err);
+  process.exit(1);
+});

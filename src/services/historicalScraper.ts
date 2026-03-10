@@ -83,7 +83,7 @@ export async function scrapeHistoricalData() {
                 }
               });
 
-              if (winningIndex !== -1 && maxPrice > 0.9) { // Safety threshold for resolution
+              if (winningIndex !== -1 && maxPrice >= 0.9) { 
                 console.log(`[Scraper] Market ${market.conditionId.substring(0, 8)} resolved! Outcome ${winningIndex} won. Triggering redemptions...`);
                 
                 await db.update(markets)
@@ -92,6 +92,12 @@ export async function scrapeHistoricalData() {
 
                 // Call resolution engine (Async)
                 processSyntheticRedemptions(market.id, market.conditionId, winningIndex, marketData.endDate);
+              } else {
+                // Phase 48: Voided/Cancelled market handling
+                console.warn(`[Scraper] Market ${market.conditionId.substring(0, 8)} closed without a 0.99 winner (Voided). Skipping redemptions.`);
+                await db.update(markets)
+                  .set({ resolvedOutcomeIndex: -1 })
+                  .where(eq(markets.id, market.id));
               }
             }
           } catch (err: any) {

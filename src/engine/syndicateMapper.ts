@@ -1,4 +1,4 @@
-import { db } from '../db';
+import { db, setupDbSync } from '../db';
 import { sql } from 'drizzle-orm';
 import { syndicates, syndicateMembers } from '../db/schema';
 
@@ -213,8 +213,13 @@ export async function mapSyndicates() {
 
 // Allow running directly
 if (require.main === module) {
-  mapSyndicates().then(() => {
-    console.log('Done.');
-    process.exit(0);
+  setupDbSync().then(() => {
+    mapSyndicates().then(() => {
+      console.log('Done.');
+      process.exit(0);
+    });
+  }).catch(err => {
+    console.error('Failed to initialize DB sync:', err);
+    process.exit(1);
   });
 }
