@@ -301,6 +301,7 @@ app.get('/api/stats/signals', async (req, res) => {
 let cachedIngestionStats: any[] = [];
 let cachedTotalTrades: number = 0;
 let cachedActiveMarkets: number = 0;
+let cachedParentMarkets: number = 0;
 
 async function refreshIngestionStats() {
   try {
@@ -310,6 +311,9 @@ async function refreshIngestionStats() {
 
     const marketsRes = await db.select({ count: sql<number>`COUNT(*)` }).from(markets).where(eq(markets.resolved, false)).get();
     cachedActiveMarkets = marketsRes?.count || 0;
+
+    const parentRes = await db.select({ count: sql<number>`COUNT(DISTINCT ${markets.question})` }).from(markets).where(eq(markets.resolved, false)).get();
+    cachedParentMarkets = parentRes?.count || 0;
 
     // 2. Limit the massive groupBy matrix purely to the Top 50 required for the UI Array representation
     cachedIngestionStats = await db.select({
@@ -334,11 +338,10 @@ setInterval(refreshIngestionStats, 60000); // Poll every 60 seconds
 // Get Ingestion Stats 
 app.get('/api/stats/ingestion', async (req, res) => {
   try {
-    const parentMarketsScraped = new Set(cachedIngestionStats.map(s => s.question)).size;
     res.json({
       stats: cachedIngestionStats,
       subMarketsScraped: cachedActiveMarkets,
-      parentMarketsScraped,
+      parentMarketsScraped: cachedParentMarkets,
       totalTrades: cachedTotalTrades
     });
   } catch (error) {

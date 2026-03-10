@@ -73,6 +73,8 @@ async function fetchActiveMarkets(limit = 1000, offset = 0) {
                     description: m.description,
                     outcomes: JSON.parse(m.outcomes || '[]'),
                     clobTokenIds: m.clobTokenIds || m.tokens?.map((t) => t.token_id) || [],
+                    category: event.category || 'Uncategorized',
+                    tags: event.tags || [],
                     volume: parseFloat(m.volume || '0'),
                     endDate: m.endDate || '',
                     icon: m.icon || '',
@@ -134,7 +136,8 @@ async function fetchMarketTrades(conditionId, maxTrades = 20000, latestTs = 0) {
                 side: data.side,
                 timestamp: data.timestamp.toString(),
                 market: conditionId,
-                asset_id: data.asset_id
+                asset_id: data.asset,
+                outcomeIndex: data.outcomeIndex
             });
         }
         if (reachedExistingData) {

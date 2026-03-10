@@ -39,14 +39,17 @@ const historicalScraper_1 = require("./services/historicalScraper");
 const server_1 = require("./api/server");
 const grader_1 = require("./engine/grader");
 const syndicateMapper_1 = require("./engine/syndicateMapper");
+const db_1 = require("./db");
 async function bootstrap() {
     console.log('🚀 Starting PolyTracker...');
+    console.log('⚙️ Initializing SQLite Database thread pools...');
+    await (0, db_1.setupDbSync)();
     // Run the historical data scraper async so it doesn't block the API/WS
     console.log('\n--- Phase 2: Running Historical Scraper Async ---');
     (0, historicalScraper_1.scrapeHistoricalData)().catch(console.error);
     // 1. Start the Dashboard API Server
     console.log('\n--- Phase 6: Starting Dashboard API ---');
-    (0, server_1.startApiServer)(3001);
+    (0, server_1.startApiServer)(process.env.PORT ? parseInt(process.env.PORT) : 4000);
     // 2. Start the realtime WebSocket listener
     console.log('\n--- Phase 2: Starting Realtime Listener ---');
     (0, realtimeListener_1.connectWebSocket)();

@@ -105,7 +105,14 @@ function App() {
       fetch(`${API_URL}/stats/ingestion`)
         .then(res => res.json())
         .then(data => {
-          if (!data?.error) setIngestionStats(data);
+          if (!data?.error) {
+            setIngestionStats({
+              stats: data.stats || [],
+              subMarketsScraped: data.subMarketsScraped || 0,
+              parentMarketsScraped: data.parentMarketsScraped || 0,
+              totalTrades: data.totalTrades || 0
+            });
+          }
         })
         .catch(console.error);
     };

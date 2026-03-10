@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.db = exports.client = void 0;
+exports.setupDbSync = setupDbSync;
 const libsql_1 = require("drizzle-orm/libsql");
 const client_1 = require("@libsql/client");
 const schema = __importStar(require("./schema"));
@@ -44,6 +45,8 @@ exports.client = (0, client_1.createClient)({
 });
 // Phase 13: Enable Write-Ahead Logging to prevent SQLITE_BUSY locked DB errors
 // This allows simultaneous read/writes between the Scraper and the API/Frontend
-exports.client.execute('PRAGMA journal_mode = WAL;');
-exports.client.execute('PRAGMA busy_timeout = 5000;');
+async function setupDbSync() {
+    await exports.client.execute('PRAGMA journal_mode = WAL;');
+    await exports.client.execute('PRAGMA busy_timeout = 5000;');
+}
 exports.db = (0, libsql_1.drizzle)(exports.client, { schema });

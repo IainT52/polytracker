@@ -41,6 +41,8 @@ exports.markets = (0, sqlite_core_1.sqliteTable)('markets', {
     description: (0, sqlite_core_1.text)('description'),
     outcomes: (0, sqlite_core_1.text)('outcomes').notNull(), // JSON stringified array e.g. '["Yes", "No"]'
     clobTokenIds: (0, sqlite_core_1.text)('clob_token_ids').notNull().default('[]'),
+    category: (0, sqlite_core_1.text)('category').notNull().default('Uncategorized'),
+    tags: (0, sqlite_core_1.text)('tags').notNull().default('[]'), // JSON stringified array of tags
     volume: (0, sqlite_core_1.real)('volume'),
     endDate: (0, sqlite_core_1.text)('end_date'),
     icon: (0, sqlite_core_1.text)('icon'),

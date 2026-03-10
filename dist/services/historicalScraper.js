@@ -43,6 +43,8 @@ async function scrapeHistoricalData() {
                             description: marketData.description,
                             outcomes: JSON.stringify(marketData.outcomes),
                             clobTokenIds: JSON.stringify(marketData.clobTokenIds || []),
+                            category: marketData.category,
+                            tags: JSON.stringify(marketData.tags || []),
                             volume: marketData.volume,
                             endDate: marketData.endDate,
                             icon: marketData.icon,
@@ -53,6 +55,8 @@ async function scrapeHistoricalData() {
                         await db_1.db.update(schema_1.markets)
                             .set({
                             slug: marketData.slug,
+                            category: marketData.category,
+                            tags: JSON.stringify(marketData.tags || []),
                             resolved: marketData.closed || !marketData.active,
                             volume: marketData.volume,
                             endDate: marketData.endDate,
@@ -92,7 +96,7 @@ async function scrapeHistoricalData() {
                             if (isValid) {
                                 return {
                                     marketId: market.id,
-                                    outcomeIndex: tokenIds.indexOf(tradeData.asset_id) !== -1 ? tokenIds.indexOf(tradeData.asset_id) : (tradeData.outcome || 0),
+                                    outcomeIndex: tradeData.outcomeIndex !== undefined ? tradeData.outcomeIndex : 0,
                                     action: tradeData.side,
                                     price: parseFloat(tradeData.price),
                                     shares: parseFloat(tradeData.size),
