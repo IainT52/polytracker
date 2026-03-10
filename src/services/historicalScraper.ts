@@ -41,6 +41,8 @@ export async function scrapeHistoricalData() {
           description: marketData.description,
           outcomes: JSON.stringify(marketData.outcomes),
           clobTokenIds: JSON.stringify(marketData.clobTokenIds || []),
+          category: marketData.category,
+          tags: JSON.stringify(marketData.tags || []),
           volume: marketData.volume,
           endDate: marketData.endDate,
           icon: marketData.icon,
@@ -50,6 +52,8 @@ export async function scrapeHistoricalData() {
         await db.update(markets)
           .set({
             slug: marketData.slug,
+            category: marketData.category,
+            tags: JSON.stringify(marketData.tags || []),
             resolved: marketData.closed || !marketData.active,
             volume: marketData.volume,
             endDate: marketData.endDate,

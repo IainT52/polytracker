@@ -61,6 +61,8 @@ export interface MarketMetadata {
   description: string;
   outcomes: string[];
   clobTokenIds: string[];
+  category: string;
+  tags: string[];
   volume: number;
   endDate: string;
   icon: string;
@@ -102,6 +104,8 @@ export async function fetchActiveMarkets(limit = 1000, offset = 0): Promise<Mark
           description: m.description,
           outcomes: JSON.parse(m.outcomes || '[]'),
           clobTokenIds: m.clobTokenIds || m.tokens?.map((t: any) => t.token_id) || [],
+          category: event.category || 'Uncategorized',
+          tags: event.tags || [],
           volume: parseFloat(m.volume || '0'),
           endDate: m.endDate || '',
           icon: m.icon || '',

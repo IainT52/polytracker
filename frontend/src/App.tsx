@@ -48,12 +48,18 @@ function App() {
   const [backtestSuccess, setBacktestSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Routing and Toggling
-  const [activeTab, setActiveTab] = useState<'config' | 'performance' | 'explorer' | 'syndicates' | 'smartMoney'>('config');
+  const [activeTab, setActiveTab] = useState<'config' | 'performance' | 'explorer' | 'syndicates' | 'smartMoney' | 'dataLab'>('config');
   const [syndicateView, setSyndicateView] = useState<'graph' | 'table'>('graph');
   const [syndicates, setSyndicates] = useState<any[]>([]);
 
   // Phase 33: Smart Money Conviction
   const [convictionMarkets, setConvictionMarkets] = useState<any[]>([]);
+
+  // Phase 42: Data Lab Engine State
+  const [exploreData, setExploreData] = useState<any[]>([]);
+  const [exploreXAxis, setExploreXAxis] = useState<string>('market_category');
+  const [exploreYAxis, setExploreYAxis] = useState<string>('volume');
+  const [isExploring, setIsExploring] = useState<boolean>(false);
 
   // Phase 17: Interactive UI State
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
@@ -143,6 +149,27 @@ function App() {
       })
       .catch(console.error);
   }, [walletFilter]);
+
+  // Phase 42: Explore Data Hook
+  useEffect(() => {
+    if (activeTab === 'dataLab') {
+      setIsExploring(true);
+      fetch(`${API_URL}/analytics/explore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ xAxis: exploreXAxis, yAxis: exploreYAxis })
+      })
+        .then(res => res.json())
+        .then(data => {
+          setExploreData(data);
+          setIsExploring(false);
+        })
+        .catch(err => {
+          console.error('[UI] Explore Fetch Error:', err);
+          setIsExploring(false);
+        });
+    }
+  }, [activeTab, exploreXAxis, exploreYAxis, telegramId]);
 
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -282,6 +309,10 @@ function App() {
           <button onClick={() => setActiveTab('smartMoney')} className={`pb-4 text-sm font-medium transition-colors relative ${activeTab === 'smartMoney' ? 'text-emerald-400' : 'text-gray-400 hover:text-gray-200'}`}>
             Smart Money
             {activeTab === 'smartMoney' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-500 rounded-t-full"></span>}
+          </button>
+          <button onClick={() => setActiveTab('dataLab')} className={`pb-4 text-sm font-medium transition-colors relative ${activeTab === 'dataLab' ? 'text-fuchsia-400' : 'text-gray-400 hover:text-gray-200'}`}>
+            Data Lab
+            {activeTab === 'dataLab' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-fuchsia-500 rounded-t-full"></span>}
           </button>
         </div>
 
@@ -824,31 +855,77 @@ function App() {
                         {market.question}
                       </h3>
 
-                      <div className="flex items-center space-x-2 mb-4 bg-gray-900 border border-gray-800 p-2 rounded-lg">
-                        <span className="text-xs text-gray-400 uppercase tracking-widest font-semibold flex-shrink-0">Whales Favor:</span>
-                        <span className={`text-sm font-extrabold text-indigo-400`}>
-                          Outcome: {market.favoredOutcomeName}
-                        </span>
+                      {/* Phase 41: V2 Smart Money Distribution Bar */}
+                      <div className="mb-4">
+                        <div className="flex h-3 w-full rounded-full overflow-hidden bg-gray-800 shadow-inner mb-2">
+                          {market.outcomesData && market.outcomesData.map((outcome: any, idx: number) => {
+                            // Safe math against arbitrary Float errors
+                            const ratio = market.totalSmartMoneyShares > 0 
+                              ? (outcome.totalShares / market.totalSmartMoneyShares) * 100 
+                              : 0;
+
+                            // Dynamic Color Mapping based on Index for contrast
+                            const bgColors = ['bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500'];
+                            const bgColor = bgColors[idx % bgColors.length];
+
+                            return (
+                              <div 
+                                key={outcome.outcomeIndex}
+                                style={{ width: `${ratio}%` }}
+                                className={`h-full ${bgColor} transition-all duration-500`}
+                                title={`${outcome.outcomeName}: ${ratio.toFixed(1)}%`}
+                              />
+                            );
+                          })}
+                        </div>
+                        
+                        {/* Legend */}
+                        <div className="flex flex-wrap gap-2 text-xs">
+                           {market.outcomesData && market.outcomesData.map((outcome: any, idx: number) => {
+                             const textColors = ['text-indigo-400', 'text-emerald-400', 'text-amber-400', 'text-rose-400', 'text-cyan-400'];
+                             const textColor = textColors[idx % textColors.length];
+                             
+                             return (
+                               <div key={outcome.outcomeIndex} className="flex items-center gap-1 bg-gray-900/50 px-2 py-1 rounded">
+                                 <span className={`w-2 h-2 rounded-full ${textColor.replace('text-', 'bg-')}`}></span>
+                                 <span className={`font-semibold ${textColor} max-w-[100px] truncate`} title={outcome.outcomeName}>
+                                   {outcome.outcomeName}
+                                 </span>
+                                 <span className="text-gray-500">{outcome.uniqueWallets}🐳</span>
+                               </div>
+                             );
+                           })}
+                        </div>
                       </div>
 
                       <details className="text-sm group-open">
-                        <summary className="text-emerald-400/80 cursor-pointer hover:text-emerald-300 flex items-center gap-1 font-medium transition-colors">
-                          View {market.wallets.length} Distinct Whales
+                        <summary className="text-emerald-400/80 cursor-pointer hover:text-emerald-300 flex items-center gap-1 font-medium transition-colors mb-2">
+                          View Distinct Whales
                         </summary>
-                        <ul className="mt-3 space-y-2 border-t border-gray-800/50 pt-3">
-                          {market.wallets.map((w: any, idx: number) => (
-                            <li key={idx} className="flex justify-between items-center text-xs pb-1 border-b border-gray-800/30 last:border-0 hover:bg-gray-900/50 p-1 rounded transition-colors" onClick={(e) => { e.stopPropagation(); setSelectedWallet(w.address); }}>
-                              <div className="flex items-center space-x-2">
-                                <span className={`px-1.5 py-0.5 rounded font-bold ${w.grade === 'A' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>{w.grade}</span>
-                                <span className="font-mono text-gray-300 hover:text-blue-300">{w.address.substring(0, 4)}..{w.address.substring(38)}</span>
-                              </div>
-                              <div className="flex flex-col items-end">
-                                <span className={`font-bold ${w.roi >= 0 ? 'text-green-500' : 'text-red-500'}`}>{w.roi >= 0 ? '+' : ''}{w.roi?.toFixed(1)}%</span>
-                                <span className="text-gray-500 text-[10px] uppercase font-mono tracking-tighter">Pos: {w.netShares.toFixed(0)}</span>
-                              </div>
-                            </li>
+                        
+                        <div className="max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
+                          {market.outcomesData && market.outcomesData.map((outcome: any) => (
+                             <div key={outcome.outcomeIndex} className="mb-4 last:mb-0">
+                               <div className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-800 pb-1 mb-2">
+                                 {outcome.outcomeName} ({outcome.uniqueWallets} Wallets)
+                               </div>
+                               <ul className="space-y-1">
+                                 {outcome.wallets.map((w: any, idx: number) => (
+                                   <li key={`${outcome.outcomeIndex}-${idx}`} className="flex justify-between items-center text-xs pb-1 border-b border-gray-800/30 last:border-0 hover:bg-gray-900/50 p-1 rounded transition-colors" onClick={(e) => { e.stopPropagation(); setSelectedWallet(w.address); }}>
+                                     <div className="flex items-center space-x-2">
+                                       <span className={`px-1.5 py-0.5 rounded font-bold ${w.grade === 'A' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>{w.grade}</span>
+                                       <span className="font-mono text-gray-300 hover:text-blue-300">{w.address.substring(0, 4)}..{w.address.substring(38)}</span>
+                                     </div>
+                                     <div className="flex flex-col items-end">
+                                       <span className={`font-bold ${w.roi >= 0 ? 'text-green-500' : 'text-red-500'}`}>{w.roi >= 0 ? '+' : ''}{w.roi?.toFixed(1)}%</span>
+                                       <span className="text-gray-500 text-[10px] uppercase font-mono tracking-tighter">Pos: {w.netShares.toFixed(0)}</span>
+                                     </div>
+                                   </li>
+                                 ))}
+                               </ul>
+                             </div>
                           ))}
-                        </ul>
+                        </div>
                       </details>
                     </article>
                   ))}
@@ -857,14 +934,116 @@ function App() {
             </div>
           </div>
         )}
-      </div>
+
+            {/* Phase 42: Data Lab Engine */}
+            {activeTab === 'dataLab' && (
+              <div className="space-y-6 animate-fade-in pb-12">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold tracking-tight text-white mb-1">Interactive Feature Engineering</h2>
+                    <p className="text-gray-400 text-sm">Query arbitrary database parameters directly into visual distributions for neural network extraction.</p>
+                  </div>
+                </div>
+
+                {/* Control Board */}
+                <div className="bg-gray-800 p-4 rounded-xl shadow border border-gray-700">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-300 mb-2">X-Axis (Dimension)</label>
+                      <select
+                        value={exploreXAxis}
+                        onChange={(e) => setExploreXAxis(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-fuchsia-500 transition-shadow transition-colors"
+                      >
+                        <option value="market_category">Market Category</option>
+                        <option value="wallet_grade">Wallet Grade</option>
+                        <option value="hour_of_day">Hour of Day (UTC)</option>
+                        <option value="day_of_week">Day of Week</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-300 mb-2">Y-Axis (Metrics)</label>
+                      <select
+                        value={exploreYAxis}
+                        onChange={(e) => setExploreYAxis(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-fuchsia-500 transition-shadow transition-colors"
+                      >
+                        <option value="volume">Total Flow Volume ($SDC)</option>
+                        <option value="trade_count">Total Distinct Trades</option>
+                        <option value="avg_trade_size">Average Order Size ($SDC)</option>
+                      </select>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* SVG Render Container */}
+                <div className="bg-gray-800 p-6 rounded-xl shadow border border-gray-700">
+                  <h3 className="text-lg font-bold text-gray-200 mb-6 flex items-center justify-between">
+                    <span>Distribution Output</span>
+                    {isExploring && <span className="text-xs text-fuchsia-400 font-mono animate-pulse">Running SQL Aggregation...</span>}
+                  </h3>
+                  
+                  <div className="h-[500px] w-full mt-4">
+                    {exploreData.length === 0 && !isExploring ? (
+                       <div className="h-full flex items-center justify-center text-gray-500 italic">No historical permutations found for these axes.</div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        {(exploreXAxis === 'hour_of_day' || exploreXAxis === 'day_of_week') ? (
+                          <AreaChart data={exploreData}>
+                            <defs>
+                              <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#d946ef" stopOpacity={0.8}/>
+                                <stop offset="95%" stopColor="#d946ef" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.4} />
+                            <XAxis dataKey="name" stroke="#9CA3AF" tick={{fill: '#9CA3AF', fontSize: 12}} />
+                            <YAxis stroke="#9CA3AF" tick={{fill: '#9CA3AF', fontSize: 12}} tickFormatter={(value) => exploreYAxis === 'trade_count' ? value.toLocaleString() : `$${(value / 1000).toFixed(0)}k`} />
+                            <Tooltip
+                              contentStyle={{ backgroundColor: 'rgba(17, 24, 39, 0.9)', borderColor: '#d946ef', borderRadius: '8px' }}
+                              itemStyle={{ color: '#d946ef', fontWeight: 'bold' }}
+                              labelStyle={{ color: '#9CA3AF' }}
+                              formatter={(value: any) => exploreYAxis === 'trade_count' ? [value.toLocaleString(), 'Count'] : [`$${Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, 'USD Value']}
+                            />
+                            <Area type="monotone" dataKey="value" stroke="#d946ef" fillOpacity={1} fill="url(#colorValue)" />
+                          </AreaChart>
+                        ) : (
+                          <AreaChart data={exploreData}>
+                            <defs>
+                              <linearGradient id="colorValueBar" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#ec4899" stopOpacity={0.8}/>
+                                <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
+                            <XAxis dataKey="name" stroke="#9CA3AF" tick={{fill: '#9CA3AF', fontSize: 12}} />
+                            <YAxis stroke="#9CA3AF" tick={{fill: '#9CA3AF', fontSize: 12}} tickFormatter={(value) => exploreYAxis === 'trade_count' ? value.toLocaleString() : `$${(value / 1000).toFixed(0)}k`} />
+                            <Tooltip
+                              contentStyle={{ backgroundColor: 'rgba(17, 24, 39, 0.9)', borderColor: '#ec4899', borderRadius: '8px' }}
+                              itemStyle={{ color: '#ec4899', fontWeight: 'bold' }}
+                              labelStyle={{ color: '#9CA3AF' }}
+                              formatter={(value: any) => exploreYAxis === 'trade_count' ? [value.toLocaleString(), 'Count'] : [`$${Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, 'USD Value']}
+                            />
+                            <Area type="step" dataKey="value" stroke="#ec4899" fillOpacity={1} fill="url(#colorValueBar)" />
+                          </AreaChart>
+                        )}
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
       {/* Phase 17 Deep Dive Modals */}
       {selectedWallet && (
         <WalletDetailsModal
           address={selectedWallet}
           onClose={() => setSelectedWallet(null)}
-          onMarketClick={(mId) => setSelectedMarket(mId)}
+          onMarketClick={(mId: string) => setSelectedMarket(mId)}
         />
       )}
       {selectedMarket && (
@@ -877,7 +1056,7 @@ function App() {
         <SyndicateDetailsModal
           syndicate={selectedSyndicate}
           onClose={() => setSelectedSyndicate(null)}
-          onWalletClick={(address) => setSelectedWallet(address)}
+          onWalletClick={(address: string) => setSelectedWallet(address)}
         />
       )}
     </div>

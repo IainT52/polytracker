@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { db } from '../db';
 import { users, autoTradeConfigs, userPositions, paperPositions, markets, wallets, trades, walletCorrelations, syndicates, syndicateMembers } from '../db/schema';
-import { eq, desc, asc, sql, gte, inArray, and } from 'drizzle-orm';
+import { eq, desc, asc, sql, gte, inArray, and, isNotNull } from 'drizzle-orm';
 import { ethers } from 'ethers';
 import { encryptKey } from '../bot/encryption';
 
@@ -433,63 +433,85 @@ app.get('/api/stats/conviction', async (req, res) => {
       .all();
 
     // 4. Construct API Payload Leaderboard
-    const marketConvictions = new Map<number, { marketId: string, question: string, favoredOutcomeIndex: number, favoredOutcomeName: string, netConviction: number, wallets: any[] }>();
+    const marketDistributions = new Map<number, { 
+      marketId: string, 
+      question: string, 
+      category: string,
+      totalSmartMoneyShares: number, 
+      outcomesData: any[] 
+    }>();
 
     for (const mId of activeMarketIds) {
+      // Filter the fundamental list of positive positions built by Whales in this market
       const positiveHolders = lifetimePositions.filter(p => !!p && p.marketId === mId && p.netShares > 1 && smartMoneyIds.includes(p.walletId));
       if (positiveHolders.length === 0) continue;
 
+      let totalSmartMoneyShares = 0;
       const holdersByOutcome: Record<number, typeof positiveHolders> = {};
+      
       for (const p of positiveHolders) {
         if (!holdersByOutcome[p.outcomeIndex]) holdersByOutcome[p.outcomeIndex] = [];
         holdersByOutcome[p.outcomeIndex].push(p);
+        totalSmartMoneyShares += p.netShares;
       }
 
-      const groupedOutcomes = Object.entries(holdersByOutcome).map(([oIdxStr, holders]) => ({
-        outcomeIndex: Number(oIdxStr),
-        holdersCount: holders.length,
-        holders
-      }));
-
-      groupedOutcomes.sort((a, b) => b.holdersCount - a.holdersCount);
-
-      const favoredGroup = groupedOutcomes[0];
-      const secondFavoredGroup = groupedOutcomes.length > 1 ? groupedOutcomes[1] : { holdersCount: 0 };
-
-      const netConviction = favoredGroup.holdersCount - secondFavoredGroup.holdersCount;
-      if (netConviction === 0) continue;
+      if (totalSmartMoneyShares === 0) continue;
 
       const marketMeta = activeMarketMap.get(mId)!;
-      let favoredOutcomeName = `Outcome ${favoredGroup.outcomeIndex}`;
+      let parsedOutcomes: string[] = [];
       try {
-        const parsedOutcomes = JSON.parse(marketMeta.outcomes || '[]');
-        if (parsedOutcomes[favoredGroup.outcomeIndex]) {
-          favoredOutcomeName = parsedOutcomes[favoredGroup.outcomeIndex];
-        }
+        parsedOutcomes = JSON.parse(marketMeta.outcomes || '[]');
       } catch (e) {
-        // Fallback already set
+        // Safe fallback
       }
 
-      marketConvictions.set(mId, {
-        marketId: marketMeta.conditionId,
-        question: marketMeta.question,
-        favoredOutcomeIndex: favoredGroup.outcomeIndex,
-        favoredOutcomeName,
-        netConviction,
-        wallets: favoredGroup.holders.map(h => {
+      const outcomesData = Object.entries(holdersByOutcome).map(([oIdxStr, holders]) => {
+        const outcomeIndex = Number(oIdxStr);
+        const outcomeName = parsedOutcomes[outcomeIndex] || `Outcome ${outcomeIndex}`;
+        
+        let outcomeTotalShares = 0;
+        let cumulativeRoi = 0;
+
+        const mappedWallets = holders.map(h => {
           const w = smartMoneyMap.get(h.walletId)!;
+          outcomeTotalShares += h.netShares;
+          cumulativeRoi += (w.recentRoi30d ?? 0);
+          
           return {
             address: w.address,
             grade: w.grade,
             roi: w.recentRoi30d ?? 0,
             netShares: h.netShares
           };
-        }).sort((a, b) => b.netShares - a.netShares) // Sort largest whale positions internally first
+        }).sort((a, b) => b.netShares - a.netShares);
+
+        const avgRoi = mappedWallets.length > 0 ? (cumulativeRoi / mappedWallets.length) : 0;
+
+        return {
+          outcomeIndex,
+          outcomeName,
+          totalShares: outcomeTotalShares,
+          uniqueWallets: mappedWallets.length,
+          avgRoi,
+          wallets: mappedWallets
+        };
+      });
+
+      // Sort outcomes for this market by highest capitalized side first
+      outcomesData.sort((a, b) => b.totalShares - a.totalShares);
+
+      marketDistributions.set(mId, {
+        marketId: marketMeta.conditionId,
+        question: marketMeta.question,
+        // Using marketMeta.category if available, otherwise generic
+        category: (marketMeta as any).category || 'Uncategorized',
+        totalSmartMoneyShares,
+        outcomesData,
       });
     }
 
-    // 5. Convert to Array and Sort by highest conviction descending
-    const leaderboard = Array.from(marketConvictions.values()).sort((a, b) => b.netConviction - a.netConviction);
+    // 5. Convert to Array and Sort globally by highly capitalized markets descending
+    const leaderboard = Array.from(marketDistributions.values()).sort((a, b) => b.totalSmartMoneyShares - a.totalSmartMoneyShares);
 
     res.json(leaderboard);
   } catch (error) {
@@ -645,6 +667,103 @@ export function startApiServer(port = 3001) {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Phase 42: Interactive Data Lab Engine
+  app.post('/api/analytics/explore', async (req, res) => {
+    try {
+      const { xAxis, yAxis } = req.body;
+
+      // 1. Strict SQL Injection Safeguards via Allowed Mapping
+      let xDimension: ReturnType<typeof sql>;
+      let yDimension: ReturnType<typeof sql>;
+      
+      // Determine if we need JOINs based on axis requests
+      let needsMarkets = false;
+      let needsWallets = false;
+
+      // Map X-Axis
+      switch (xAxis) {
+        case 'hour_of_day':
+          xDimension = sql<string>`strftime('%H', datetime(${trades.timestamp} / 1000, 'unixepoch'))`;
+          break;
+        case 'day_of_week':
+          xDimension = sql<string>`strftime('%w', datetime(${trades.timestamp} / 1000, 'unixepoch'))`;
+          break;
+        case 'market_category':
+          needsMarkets = true;
+          xDimension = sql<string>`${markets.category}`;
+          break;
+        case 'wallet_grade':
+          needsWallets = true;
+          xDimension = sql<string>`${wallets.grade}`;
+          break;
+        default:
+          return res.status(400).json({ error: 'Invalid or unsupported xAxis dimension parameter.' });
+      }
+
+      // Map Y-Axis
+      switch (yAxis) {
+        case 'trade_count':
+          yDimension = sql<number>`COUNT(${trades.id})`.mapWith(Number);
+          break;
+        case 'volume':
+          yDimension = sql<number>`SUM(${trades.price} * ${trades.shares})`.mapWith(Number);
+          break;
+        case 'avg_trade_size':
+          yDimension = sql<number>`AVG(${trades.price} * ${trades.shares})`.mapWith(Number);
+          break;
+        default:
+          return res.status(400).json({ error: 'Invalid or unsupported yAxis metric parameter.' });
+      }
+
+      // 2. Dynamically Execute Drizzle Query Builder
+      let queryBuilder = db.select({
+        name: xDimension,
+        value: yDimension
+      }).from(trades);
+
+      if (needsMarkets) {
+        queryBuilder = queryBuilder.leftJoin(markets, eq(trades.marketId, markets.id)) as any;
+      }
+      
+      if (needsWallets) {
+        queryBuilder = queryBuilder.leftJoin(wallets, eq(trades.walletId, wallets.id)) as any;
+      }
+
+      const results = await queryBuilder
+        .where(isNotNull(xDimension)) // Filter out mapping nulls
+        .groupBy(xDimension)
+        .orderBy(xDimension)
+        .limit(500) // Prevent enormous payload freezes
+        .all();
+
+      // 3. Optional Payload Post-Processing Map
+      const formattedResults = results.map(row => {
+        let displayName = row.name;
+        
+        if (xAxis === 'day_of_week') {
+          const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+          displayName = days[parseInt(row.name as string)] || row.name;
+        } else if (xAxis === 'hour_of_day') {
+          displayName = `${row.name}:00 UTC`;
+        } else if (xAxis === 'wallet_grade') {
+           // Some wallets might return without grades initialized yet
+           if (!displayName) displayName = 'Ungraded';
+        }
+
+        return {
+          name: displayName,
+          value: row.value
+        };
+      });
+
+      res.json(formattedResults);
+
+    } catch (error) {
+      console.error('[API] /api/analytics/explore error:', error);
+      res.status(500).json({ error: 'Failed to compute multi-dimensional analysis' });
     }
   });
 

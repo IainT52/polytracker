@@ -41,6 +41,8 @@ export const markets = sqliteTable('markets', {
   description: text('description'),
   outcomes: text('outcomes').notNull(), // JSON stringified array e.g. '["Yes", "No"]'
   clobTokenIds: text('clob_token_ids').notNull().default('[]'),
+  category: text('category').notNull().default('Uncategorized'),
+  tags: text('tags').notNull().default('[]'), // JSON stringified array of tags
   volume: real('volume'),
   endDate: text('end_date'),
   icon: text('icon'),
