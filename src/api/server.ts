@@ -458,22 +458,29 @@ export function startApiServer(port = 3001) {
         return res.status(404).json({ error: 'Wallet not found' });
       }
 
-      // Get their 50 most recent trades combined with market metadata
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+
+      // Phase 31: True Aggregation + Paginated Scroller
       const recentTrades = await db.select({
         id: trades.id,
         action: trades.action,
-        shares: trades.shares,
-        price: trades.price,
+        shares: sql<number>`SUM(${trades.shares})`.mapWith(Number),
+        price: sql<number>`AVG(${trades.price})`.mapWith(Number),
         timestamp: trades.timestamp,
         marketId: markets.conditionId,
         question: markets.question,
-        icon: markets.icon
+        icon: markets.icon,
+        subTrades: sql<number>`COUNT(${trades.id})`.mapWith(Number),
+        cost: sql<number>`SUM(${trades.price} * ${trades.shares})`.mapWith(Number)
       })
         .from(trades)
         .leftJoin(markets, eq(trades.marketId, markets.id))
         .where(eq(trades.walletId, walletData.id))
+        .groupBy(trades.timestamp, trades.marketId, trades.action)
         .orderBy(desc(trades.timestamp))
-        .limit(50)
+        .limit(limit)
+        .offset((page - 1) * limit)
         .all();
 
       // Phase 22: Performance Chart running cash flow proxy

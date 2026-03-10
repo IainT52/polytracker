@@ -1,17 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
-interface Trade {
-  id: number;
-  action: string;
-  shares: number | string;
-  price: number | string;
-  timestamp: string;
-  marketId: string;
-  question: string;
-  icon: string;
-}
-
 interface WalletDetailsModalProps {
   address: string;
   onClose: () => void;
@@ -21,9 +10,11 @@ interface WalletDetailsModalProps {
 export const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({ address, onClose, onMarketClick }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
-    fetch(`http://localhost:3001/api/wallets/${address}`)
+    setLoading(true);
+    fetch(`http://localhost:3001/api/wallets/${address}?page=${page}&limit=50`)
       .then(res => res.json())
       .then(d => {
         setData(d);
@@ -35,7 +26,7 @@ export const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({ address,
       .finally(() => {
         setLoading(false);
       });
-  }, [address]);
+  }, [address, page]);
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-end z-50 backdrop-blur-sm transition-all" onClick={onClose}>
@@ -123,10 +114,30 @@ export const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({ address,
               </div>
 
             <div className="mt-8 border-t border-gray-800 pt-6">
-              <h3 className="text-lg font-semibold text-gray-300 mb-4">50 Most Recent Trades</h3>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-300">Detailed Trade History</h3>
+                  <div className="flex gap-2 text-sm">
+                    <button
+                      disabled={page === 1}
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      className="px-3 py-1 bg-gray-800 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                    >
+                      Prev
+                    </button>
+                    <span className="px-3 py-1 text-gray-500 font-mono">Page {page}</span>
+                    <button
+                      disabled={!data.recentTrades || data.recentTrades.length < 50}
+                      onClick={() => setPage(p => p + 1)}
+                      className="px-3 py-1 bg-gray-800 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+
               <div className="space-y-3">
                 {data.recentTrades && data.recentTrades.length > 0 ? (
-                  data.recentTrades.map((t: Trade) => (
+                    data.recentTrades.map((t: any) => (
                     <div 
                       key={t.id} 
                       className="bg-gray-800 rounded p-3 text-sm border border-transparent hover:border-indigo-500/50 cursor-pointer transition-colors"
@@ -137,26 +148,46 @@ export const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({ address,
                         <p className="text-gray-300 font-medium truncate flex-1">{t.question || 'Unknown Market'}</p>
                       </div>
                       <div className="flex justify-between items-center text-xs">
-                        <span className={`px-2 py-0.5 rounded font-bold ${t.action === 'BUY' ? 'text-green-400 bg-green-400/10' : 'text-red-400 bg-red-400/10'}`}>
-                          {t.action}
-                        </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded font-bold ${t.action === 'BUY' ? 'text-green-400 bg-green-400/10' : 'text-red-400 bg-red-400/10'}`}>
+                              {t.action}
+                            </span>
+                            {t.subTrades > 1 && (
+                              <span className="text-gray-500 font-mono text-[10px] bg-gray-900 px-1.5 py-0.5 rounded border border-gray-700">
+                                (x{t.subTrades} fills)
+                              </span>
+                            )}
+                          </div>
                         <span className="text-gray-400">
                           {Number(t.shares).toFixed(0)} shares @ ${(Number(t.price)).toFixed(3)}
                         </span>
-                        <span className="text-gray-500">
-                          {new Date(t.timestamp).toLocaleDateString()}
+                          <span className="text-gray-500 font-mono text-[10px]">
+                            {new Date(t.timestamp).toLocaleString(undefined, {
+                              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+                            })}
                         </span>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-gray-500 text-sm">No recent trades found.</p>
+                      <p className="text-gray-500 text-sm">No recent trades found on this page.</p>
                 )}
               </div>
+
+                {data.recentTrades && data.recentTrades.length === 50 && (
+                  <div className="flex justify-center mt-6">
+                    <button
+                      onClick={() => setPage(p => p + 1)}
+                      className="px-6 py-2 bg-gray-800 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700 border border-gray-700 transition-all w-full font-medium"
+                    >
+                      Load More Trades
+                    </button>
+                  </div>
+                )}
             </div>
           </div>
         ) : (
-          <div className="text-red-400">Failed to load wallet data.</div>
+              <div className="text-red-400 text-center py-10">Failed to load wallet data.</div>
         )}
       </div>
     </div>

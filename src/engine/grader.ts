@@ -23,7 +23,7 @@ export async function runWalletGrader() {
         SUM(CASE WHEN action = 'BUY' THEN price * shares ELSE 0 END) AS total_spent,
         SUM(CASE WHEN action = 'SELL' THEN price * shares ELSE 0 END) AS total_earned,
         SUM(price * shares) AS volume,
-        COUNT(id) AS trade_count,
+        COUNT(DISTINCT timestamp) AS trade_count,
         
         -- 30-Day Recency Isolations
         SUM(CASE WHEN timestamp >= ? AND action = 'BUY' THEN shares ELSE 0 END) AS recent_shares_bought,
@@ -31,7 +31,7 @@ export async function runWalletGrader() {
         SUM(CASE WHEN timestamp >= ? AND action = 'BUY' THEN price * shares ELSE 0 END) AS recent_total_spent,
         SUM(CASE WHEN timestamp >= ? AND action = 'SELL' THEN price * shares ELSE 0 END) AS recent_total_earned,
         SUM(CASE WHEN timestamp >= ? THEN price * shares ELSE 0 END) AS recent_volume,
-        SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) AS recent_trade_count
+        COUNT(DISTINCT CASE WHEN timestamp >= ? THEN timestamp END) AS recent_trade_count
       FROM trades
       GROUP BY wallet_id, market_id, outcome_index
     )
