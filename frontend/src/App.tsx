@@ -826,8 +826,8 @@ function App() {
 
                       <div className="flex items-center space-x-2 mb-4 bg-gray-900 border border-gray-800 p-2 rounded-lg">
                         <span className="text-xs text-gray-400 uppercase tracking-widest font-semibold flex-shrink-0">Whales Favor:</span>
-                        <span className={`text-sm font-extrabold ${market.favoredOutcomeIndex === 0 ? 'text-green-400' : 'text-blue-400'}`}>
-                          Outcome {market.favoredOutcomeIndex} ({market.favoredOutcomeIndex === 0 ? 'YES/A' : 'NO/B'})
+                        <span className={`text-sm font-extrabold text-indigo-400`}>
+                          Outcome: {market.favoredOutcomeName}
                         </span>
                       </div>
 

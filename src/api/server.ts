@@ -394,7 +394,8 @@ app.get('/api/stats/conviction', async (req, res) => {
     const activeMarkets = await db.select({
       id: markets.id,
       conditionId: markets.conditionId,
-      question: markets.question
+      question: markets.question,
+      outcomes: markets.outcomes
     })
       .from(markets)
       .where(eq(markets.resolved, false))
@@ -432,7 +433,7 @@ app.get('/api/stats/conviction', async (req, res) => {
       .all();
 
     // 4. Construct API Payload Leaderboard
-    const marketConvictions = new Map<number, { marketId: string, question: string, favoredOutcomeIndex: number, netConviction: number, wallets: any[] }>();
+    const marketConvictions = new Map<number, { marketId: string, question: string, favoredOutcomeIndex: number, favoredOutcomeName: string, netConviction: number, wallets: any[] }>();
 
     for (const mId of activeMarketIds) {
       const positiveHolders = lifetimePositions.filter(p => !!p && p.marketId === mId && p.netShares > 1 && smartMoneyIds.includes(p.walletId));
@@ -459,11 +460,21 @@ app.get('/api/stats/conviction', async (req, res) => {
       if (netConviction === 0) continue;
 
       const marketMeta = activeMarketMap.get(mId)!;
+      let favoredOutcomeName = `Outcome ${favoredGroup.outcomeIndex}`;
+      try {
+        const parsedOutcomes = JSON.parse(marketMeta.outcomes || '[]');
+        if (parsedOutcomes[favoredGroup.outcomeIndex]) {
+          favoredOutcomeName = parsedOutcomes[favoredGroup.outcomeIndex];
+        }
+      } catch (e) {
+        // Fallback already set
+      }
 
       marketConvictions.set(mId, {
         marketId: marketMeta.conditionId,
         question: marketMeta.question,
         favoredOutcomeIndex: favoredGroup.outcomeIndex,
+        favoredOutcomeName,
         netConviction,
         wallets: favoredGroup.holders.map(h => {
           const w = smartMoneyMap.get(h.walletId)!;
