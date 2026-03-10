@@ -98,7 +98,7 @@ export async function scrapeHistoricalData() {
           if (isValid) {
             return {
               marketId: market.id,
-              outcomeIndex: tokenIds.indexOf(tradeData.asset_id) !== -1 ? tokenIds.indexOf(tradeData.asset_id) : (tradeData.outcome || 0),
+              outcomeIndex: tradeData.outcomeIndex !== undefined ? tradeData.outcomeIndex : 0,
               action: tradeData.side,
               price: parseFloat(tradeData.price),
               shares: parseFloat(tradeData.size),

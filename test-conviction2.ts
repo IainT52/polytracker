@@ -3,7 +3,7 @@ import { trades, wallets, markets } from './src/db/schema';
 import { eq, sql, inArray, and } from 'drizzle-orm';
 
 async function test() {
-    const activeMarkets = await db.select({ id: markets.id, conditionId: markets.conditionId }).from(markets).where(eq(markets.resolved, false)).limit(10).all();
+    const activeMarkets = await db.select({ id: markets.id, conditionId: markets.conditionId }).from(markets).where(eq(markets.resolved, false)).all();
     const activeMarketIds = activeMarkets.map(m => m.id);
     
     const smartMoneyWallets = await db.select({ id: wallets.id }).from(wallets).where(inArray(wallets.grade, ['A', 'B'])).all();
@@ -23,9 +23,9 @@ async function test() {
       .groupBy(trades.marketId, trades.walletId, trades.outcomeIndex)
       .all();
 
-    console.log("Raw lifetime positions (sample):", lifetimePositions.slice(0, 5));
-    
-    // Manual Grouping Grouping
+    let favoredOnes = 0;
+    let favoredZeros = 0;
+
     for (const mId of activeMarketIds) {
       const positiveHolders = lifetimePositions.filter(p => !!p && p.marketId === mId && p.netShares > 1);
       if (positiveHolders.length === 0) continue;
@@ -35,7 +35,6 @@ async function test() {
         if (!holdersByOutcome[p.outcomeIndex]) holdersByOutcome[p.outcomeIndex] = [];
         holdersByOutcome[p.outcomeIndex].push(p);
       }
-      console.log(`\nMarket ${mId} Groupings:`, Object.keys(holdersByOutcome).map(k => ({ outcome: k, count: holdersByOutcome[k].length })));
       
       const groupedOutcomes = Object.entries(holdersByOutcome).map(([oIdxStr, holders]) => ({
         outcomeIndex: Number(oIdxStr),
@@ -43,7 +42,12 @@ async function test() {
       }));
 
       groupedOutcomes.sort((a, b) => b.holdersCount - a.holdersCount);
-      console.log(`Favored outcome:`, groupedOutcomes[0].outcomeIndex);
+      const favored = groupedOutcomes[0].outcomeIndex;
+      if (favored === 0) favoredZeros++;
+      else if (favored === 1) favoredOnes++;
+      else console.log(`Other Favored Outcome:`, favored);
     }
+
+    console.log(`Favored 0s: ${favoredZeros}, Favored 1s: ${favoredOnes}`);
 }
 test().catch(console.error);

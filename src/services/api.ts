@@ -79,6 +79,7 @@ export interface TradeData {
   timestamp: string;
   market?: string;
   asset_id?: string;
+  outcomeIndex?: number;
 }
 
 /**
@@ -169,7 +170,8 @@ export async function fetchMarketTrades(conditionId: string, maxTrades = 20000, 
         side: data.side as 'BUY' | 'SELL',
         timestamp: data.timestamp.toString(),
         market: conditionId,
-        asset_id: data.asset_id
+        asset_id: data.asset,
+        outcomeIndex: data.outcomeIndex
       });
     }
 
