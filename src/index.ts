@@ -4,9 +4,13 @@ import { scrapeHistoricalData } from './services/historicalScraper';
 import { startApiServer } from './api/server';
 import { runWalletGrader } from './engine/grader';
 import { mapSyndicates } from './engine/syndicateMapper';
+import { setupDbSync } from './db';
 
 async function bootstrap() {
   console.log('🚀 Starting PolyTracker...');
+  
+  console.log('⚙️ Initializing SQLite Database thread pools...');
+  await setupDbSync();
 
   // Run the historical data scraper async so it doesn't block the API/WS
   console.log('\n--- Phase 2: Running Historical Scraper Async ---');
@@ -14,7 +18,7 @@ async function bootstrap() {
 
   // 1. Start the Dashboard API Server
   console.log('\n--- Phase 6: Starting Dashboard API ---');
-  startApiServer(3001);
+  startApiServer(process.env.PORT ? parseInt(process.env.PORT) : 4000);
 
   // 2. Start the realtime WebSocket listener
   console.log('\n--- Phase 2: Starting Realtime Listener ---');

@@ -30,7 +30,7 @@ interface Position {
   realizedPnL?: string;
 }
 
-const API_URL = 'http://127.0.0.1:3001/api';
+const API_URL = 'http://127.0.0.1:4000/api';
 
 function App() {
   const [telegramId, setTelegramId] = useState<string>(localStorage.getItem('telegramId') || '');
