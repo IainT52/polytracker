@@ -309,11 +309,20 @@ async function refreshIngestionStats() {
     const tradesRes = await db.select({ count: sql<number>`COUNT(*)` }).from(trades).get();
     cachedTotalTrades = tradesRes?.count || 0;
 
-    const marketsRes = await db.select({ count: sql<number>`COUNT(*)` }).from(markets).where(eq(markets.resolved, false)).get();
-    cachedActiveMarkets = marketsRes?.count || 0;
-
     const parentRes = await db.select({ count: sql<number>`COUNT(DISTINCT ${markets.question})` }).from(markets).where(eq(markets.resolved, false)).get();
     cachedParentMarkets = parentRes?.count || 0;
+
+    // Evaluate sub-markets natively from parsed JSON Token arrays
+    const subMarketRes = await db.select({ clobTokenIds: markets.clobTokenIds }).from(markets).where(eq(markets.resolved, false)).all();
+    let totalSubMarkets = 0;
+    for (const m of subMarketRes) {
+      if (m.clobTokenIds) {
+        try {
+          totalSubMarkets += JSON.parse(m.clobTokenIds).length;
+        } catch(e) {}
+      }
+    }
+    cachedActiveMarkets = totalSubMarkets;
 
     // 2. Limit the massive groupBy matrix purely to the Top 50 required for the UI Array representation
     cachedIngestionStats = await db.select({
