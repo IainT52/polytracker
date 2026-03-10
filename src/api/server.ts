@@ -299,9 +299,19 @@ app.get('/api/stats/signals', async (req, res) => {
 
 // Phase 13: Cache heavy SQL grouping to prevent Event Loop/SQLite starvation
 let cachedIngestionStats: any[] = [];
+let cachedTotalTrades: number = 0;
+let cachedActiveMarkets: number = 0;
 
 async function refreshIngestionStats() {
   try {
+    // 1. O(1) Header calculation for pure totals
+    const tradesRes = await db.select({ count: sql<number>`COUNT(*)` }).from(trades).get();
+    cachedTotalTrades = tradesRes?.count || 0;
+
+    const marketsRes = await db.select({ count: sql<number>`COUNT(*)` }).from(markets).where(eq(markets.resolved, false)).get();
+    cachedActiveMarkets = marketsRes?.count || 0;
+
+    // 2. Limit the massive groupBy matrix purely to the Top 50 required for the UI Array representation
     cachedIngestionStats = await db.select({
       marketId: markets.conditionId,
       question: markets.question,
@@ -311,6 +321,7 @@ async function refreshIngestionStats() {
       .leftJoin(markets, eq(trades.marketId, markets.id))
       .groupBy(trades.marketId)
       .orderBy(desc(sql`COUNT(${trades.id})`))
+      .limit(50)
       .all();
   } catch (error) {
     console.error('[API] Background Caching Failed:', error);
@@ -318,18 +329,17 @@ async function refreshIngestionStats() {
 }
 
 refreshIngestionStats();
-setInterval(refreshIngestionStats, 30000);
+setInterval(refreshIngestionStats, 60000); // Poll every 60 seconds
 
 // Get Ingestion Stats 
 app.get('/api/stats/ingestion', async (req, res) => {
   try {
     const parentMarketsScraped = new Set(cachedIngestionStats.map(s => s.question)).size;
-    const totalTrades = cachedIngestionStats.reduce((acc, curr) => acc + curr.tradeCount, 0);
     res.json({
       stats: cachedIngestionStats,
-      subMarketsScraped: cachedIngestionStats.length,
+      subMarketsScraped: cachedActiveMarkets,
       parentMarketsScraped,
-      totalTrades
+      totalTrades: cachedTotalTrades
     });
   } catch (error) {
     console.error(error);
@@ -414,7 +424,10 @@ app.get('/api/stats/conviction', async (req, res) => {
       netShares: sql<number>`SUM(CASE WHEN ${trades.action} = 'BUY' THEN ${trades.shares} ELSE -${trades.shares} END)`.mapWith(Number)
     })
       .from(trades)
-      .where(inArray(trades.marketId, activeMarketIds))
+      .where(and(
+        inArray(trades.marketId, activeMarketIds),
+        inArray(trades.walletId, smartMoneyIds)
+      ))
       .groupBy(trades.marketId, trades.walletId, trades.outcomeIndex)
       .all();
 
