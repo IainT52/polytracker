@@ -475,7 +475,10 @@ function App() {
             {signalStats && signalStats.recentSignals && signalStats.recentSignals.length > 0 && (
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl space-y-4">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-bold flex items-center gap-2 text-indigo-300">
+                  <h2
+                    className="text-xl font-bold flex items-center gap-2 text-indigo-300 cursor-help"
+                    title="Engine requires Net Conviction (Smart Buys - Smart Sells >= 2) within a 15-minute synchronized window to trigger."
+                  >
                     <svg className="w-5 h-5 text-indigo-400 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     Recent Alpha Signals
                   </h2>
@@ -554,7 +557,10 @@ function App() {
             </div>
 
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl">
-              <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-purple-300">
+              <h2
+                className="text-xl font-bold mb-6 flex items-center gap-2 text-purple-300 cursor-help"
+                title="Only wallets with >30 Total Trades and >$10k Total Volume qualify for Grader Profile analysis."
+              >
                 <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                 Top Graded Wallets
               </h2>
@@ -642,8 +648,20 @@ function App() {
                           <tr key={w.id} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer" onClick={() => setSelectedWallet(w.address)}>
                             <td className="py-3 font-mono text-gray-300">{w.address.substring(0, 6)}...{w.address.substring(38)}</td>
                             <td className="py-3">
-                              <span className={`px-2 py-1 rounded text-xs font-bold ${w.grade === 'A' ? 'bg-green-500/20 text-green-400' : w.grade === 'B' ? 'bg-blue-500/20 text-blue-400' : w.grade === 'C' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-700 text-gray-400'}`}>
-                                Grade {w.grade || 'N/A'}
+                              <span
+                                className={`px-3 py-1 rounded-full text-xs font-extrabold cursor-help ${w.grade === 'A' ? 'bg-green-500/20 text-green-400 border border-green-500/30 shadow-[0_0_10px_rgba(34,197,94,0.2)]' :
+                                    w.grade === 'B' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                                      w.grade === 'C' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                                        'bg-red-500/20 text-red-400 border border-red-500/30'
+                                  }`}
+                                title={
+                                  w.grade === 'A' ? 'Grade A: >25% ROI & >60% Win Rate' :
+                                    w.grade === 'B' ? 'Grade B: >10% ROI & >50% Win Rate' :
+                                      w.grade === 'C' ? 'Grade C: >0% ROI (Profitable)' :
+                                        'Grade D: Negative ROI'
+                                }
+                              >
+                                Grade {w.grade}
                             </span>
                           </td>
                           <td className={`py-3 font-bold ${w.roi >= 0 ? 'text-green-400' : 'text-red-400'}`}>

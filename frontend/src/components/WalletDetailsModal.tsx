@@ -42,7 +42,15 @@ export const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({ address,
           <div className="space-y-6">
             <div>
               <div className="flex items-center space-x-3 mb-2">
-                <div className={`text-xl font-bold px-3 py-1 rounded bg-opacity-20 ${data.metadata.grade === 'A' ? 'bg-green-500 text-green-400' : 'bg-blue-500 text-blue-400'}`}>
+                  <div
+                    className={`text-xl font-bold px-3 py-1 rounded bg-opacity-20 cursor-help ${data.metadata.grade === 'A' ? 'bg-green-500 text-green-400' : 'bg-blue-500 text-blue-400'}`}
+                    title={
+                      data.metadata.grade === 'A' ? 'Grade A: >25% ROI & >60% Win Rate' :
+                        data.metadata.grade === 'B' ? 'Grade B: >10% ROI & >50% Win Rate' :
+                          data.metadata.grade === 'C' ? 'Grade C: >0% ROI (Profitable)' :
+                            'Grade D: Negative ROI'
+                    }
+                  >
                   Grade {data.metadata.grade}
                 </div>
                 <h2 className="text-xl font-mono text-gray-200 truncate">{address.substring(0,6)}...{address.substring(38)}</h2>

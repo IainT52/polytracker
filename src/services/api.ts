@@ -97,7 +97,7 @@ export async function fetchActiveMarkets(limit = 1000, offset = 0): Promise<Mark
           id: m.id,
           conditionId: m.conditionId,
           question: m.question,
-          slug: m.slug || '',
+          slug: event.slug || '',
           description: m.description,
           outcomes: JSON.parse(m.outcomes || '[]'),
           clobTokenIds: m.clobTokenIds || m.tokens?.map((t: any) => t.token_id) || [],
