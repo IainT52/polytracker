@@ -38,8 +38,8 @@ function App() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [backtestData, setBacktestData] = useState<any[]>([]);
   const [topWallets, setTopWallets] = useState<any[]>([]);
-  const [walletFilter, setWalletFilter] = useState({ grade: 'ALL', minTrades: 0, minVolume: 0, minWinRate: 0, minRoi: 0 });
-
+  const [walletFilter, setWalletFilter] = useState({ grade: 'ALL', minTrades: 0, minVolume: 0, minWinRate: 0, minRoi: 0, page: 1 });
+  const [walletPagination, setWalletPagination] = useState({ totalWallets: 0, totalPages: 1, currentPage: 1, limit: 50 });
   const [signalStats, setSignalStats] = useState<any>(null);
   const [ingestionStats, setIngestionStats] = useState<any>({ stats: [], subMarketsScraped: 0, parentMarketsScraped: 0, totalTrades: 0 });
   const [saving, setSaving] = useState(false);
@@ -146,13 +146,16 @@ function App() {
     return () => clearInterval(interval);
   }, [telegramId]);
 
-  // Phase 30: Dedicated Top Wallets Fetcher
+  // Phase 30 & 43: Dedicated Top Wallets Fetcher with Pagination Hooks
   useEffect(() => {
     const params = new URLSearchParams(walletFilter as any).toString();
     fetch(`${API_URL}/stats/wallets?${params}`)
       .then(res => res.json())
       .then(data => {
-        if (!data.error) setTopWallets(data);
+        if (!data.error) {
+          setTopWallets(data.wallets || []);
+          setWalletPagination(data.pagination || { totalWallets: 0, totalPages: 1, currentPage: 1, limit: 50 });
+        }
       })
       .catch(console.error);
   }, [walletFilter]);
@@ -638,7 +641,7 @@ function App() {
                   <select
                     title="Filter by Wallet Grade"
                     value={walletFilter.grade}
-                    onChange={(e) => setWalletFilter(prev => ({ ...prev, grade: e.target.value }))}
+                    onChange={(e) => setWalletFilter(prev => ({ ...prev, grade: e.target.value, page: 1 }))}
                     className="bg-gray-950 border border-gray-800 rounded-md p-2 text-sm text-gray-200 outline-none focus:border-purple-500 transition-colors"
                   >
                     <option value="ALL">All Grades</option>
@@ -655,7 +658,7 @@ function App() {
                     min="0"
                     placeholder="0"
                     value={walletFilter.minTrades || ''}
-                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minTrades: Number(e.target.value) }))}
+                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minTrades: Number(e.target.value), page: 1 }))}
                     className="bg-gray-950 border border-gray-800 rounded-md p-2 text-sm text-gray-200 outline-none focus:border-purple-500 transition-colors"
                   />
                 </div>
@@ -666,7 +669,7 @@ function App() {
                     min="0"
                     placeholder="0"
                     value={walletFilter.minVolume || ''}
-                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minVolume: Number(e.target.value) }))}
+                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minVolume: Number(e.target.value), page: 1 }))}
                     className="bg-gray-950 border border-gray-800 rounded-md p-2 text-sm text-gray-200 outline-none focus:border-purple-500 transition-colors"
                   />
                 </div>
@@ -678,7 +681,7 @@ function App() {
                     max="100"
                     placeholder="0"
                     value={walletFilter.minWinRate || ''}
-                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minWinRate: Number(e.target.value) }))}
+                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minWinRate: Number(e.target.value), page: 1 }))}
                     className="bg-gray-950 border border-gray-800 rounded-md p-2 text-sm text-gray-200 outline-none focus:border-purple-500 transition-colors"
                   />
                 </div>
@@ -688,7 +691,7 @@ function App() {
                     type="number"
                     placeholder="0"
                     value={walletFilter.minRoi || ''}
-                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minRoi: Number(e.target.value) }))}
+                    onChange={(e) => setWalletFilter(prev => ({ ...prev, minRoi: Number(e.target.value), page: 1 }))}
                     className="bg-gray-950 border border-gray-800 rounded-md p-2 text-sm text-gray-200 outline-none focus:border-purple-500 transition-colors"
                   />
                 </div>
@@ -748,6 +751,33 @@ function App() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Phase 43: Pagination Controls */}
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-800">
+                <div className="text-sm text-gray-400">
+                  Showing <span className="font-bold text-gray-200">{topWallets.length}</span> of <span className="font-bold text-gray-200">{walletPagination.totalWallets.toLocaleString()}</span> Wallets
+                </div>
+                <div className="flex items-center gap-4">
+                  <button
+                    disabled={walletFilter.page <= 1}
+                    onClick={() => setWalletFilter(prev => ({ ...prev, page: prev.page - 1 }))}
+                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-700 rounded-lg text-sm font-bold text-gray-200 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-gray-400 font-medium">
+                    Page {walletPagination.currentPage} of {walletPagination.totalPages}
+                  </span>
+                  <button
+                    disabled={walletFilter.page >= walletPagination.totalPages}
+                    onClick={() => setWalletFilter(prev => ({ ...prev, page: prev.page + 1 }))}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed border border-purple-500 rounded-lg text-sm font-bold text-white transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+
             </div>
           </div>
         )}
@@ -864,23 +894,26 @@ function App() {
 
                       {/* Phase 41: V2 Smart Money Distribution Bar */}
                       <div className="mb-4">
-                        <div className="flex h-3 w-full rounded-full overflow-hidden bg-gray-800 shadow-inner mb-2">
+                        <div className="flex h-4 w-full rounded-full overflow-hidden bg-gray-800 shadow-inner mb-3 border border-gray-700">
                           {market.outcomesData && market.outcomesData.map((outcome: any, idx: number) => {
                             // Safe math against arbitrary Float errors
                             const ratio = market.totalSmartMoneyShares > 0 
                               ? (outcome.totalShares / market.totalSmartMoneyShares) * 100 
                               : 0;
 
+                            // Prevent NaN
+                            const safeRatio = isNaN(ratio) ? 0 : ratio;
+
                             // Dynamic Color Mapping based on Index for contrast
-                            const bgColors = ['bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500'];
+                            const bgColors = ['bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500', 'bg-fuchsia-500'];
                             const bgColor = bgColors[idx % bgColors.length];
 
                             return (
                               <div 
                                 key={outcome.outcomeIndex}
-                                style={{ width: `${ratio}%` }}
-                                className={`h-full ${bgColor} transition-all duration-500`}
-                                title={`${outcome.outcomeName}: ${ratio.toFixed(1)}%`}
+                                style={{ width: `${Math.max(2, safeRatio)}%` }}
+                                className={`h-full ${bgColor} transition-all duration-500 hover:brightness-110 cursor-help border-r border-gray-900/50 last:border-r-0`}
+                                title={`${outcome.outcomeName}: ${safeRatio.toFixed(1)}% (${outcome.totalShares.toFixed(0)} Shares)`}
                               />
                             );
                           })}

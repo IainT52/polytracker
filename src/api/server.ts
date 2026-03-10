@@ -199,10 +199,13 @@ app.post('/api/backtest/:telegramId', async (req, res) => {
   }
 });
 
-// Get Top Rated Wallets with Dynamic Filters
+// Get Top Rated Wallets with Dynamic Filters & Pagination
 app.get('/api/stats/wallets', async (req, res) => {
   try {
     const { grade, minTrades, minVolume, minWinRate, minRoi } = req.query;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = (page - 1) * limit;
 
     const conditions = [eq(wallets.isBot, false)];
 
@@ -222,13 +225,35 @@ app.get('/api/stats/wallets', async (req, res) => {
       conditions.push(gte(wallets.roi, Number(minRoi)));
     }
 
+    const whereClause = and(...conditions);
+
+    // 1. Get complete count of qualified wallets for pagination length
+    const countQuery = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(wallets)
+      .where(whereClause)
+      .get();
+      
+    const totalWallets = countQuery?.count || 0;
+    const totalPages = Math.ceil(totalWallets / limit);
+
+    // 2. Fetch specific offset slice
     const topWallets = await db.select()
       .from(wallets)
-      .where(and(...conditions))
+      .where(whereClause)
       .orderBy(desc(wallets.roi))
-      .limit(50);
+      .limit(limit)
+      .offset(offset)
+      .all();
 
-    res.json(topWallets);
+    res.json({
+      wallets: topWallets,
+      pagination: {
+        totalWallets,
+        totalPages,
+        currentPage: page,
+        limit
+      }
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal server error' });
