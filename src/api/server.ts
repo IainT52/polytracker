@@ -374,6 +374,92 @@ app.get('/api/stats/syndicates', async (req, res) => {
   }
 });
 
+// Phase 33: Lifetime Accumulation Conviction API
+app.get('/api/stats/conviction', async (req, res) => {
+  try {
+    // 1. Fetch only active (unresolved) markets to prevent alerting on expired data
+    const activeMarkets = await db.select({
+      id: markets.id,
+      conditionId: markets.conditionId,
+      question: markets.question
+    })
+      .from(markets)
+      .where(eq(markets.resolved, false))
+      .all();
+
+    const activeMarketIds = activeMarkets.map(m => m.id);
+    const activeMarketMap = new Map(activeMarkets.map(m => [m.id, m]));
+
+    if (activeMarketIds.length === 0) {
+      return res.json([]);
+    }
+
+    // 2. Fetch all Grade A/B Smart Money Wallets
+    const smartMoneyWallets = await db.select().from(wallets).where(inArray(wallets.grade, ['A', 'B'])).all();
+    const smartMoneyIds = smartMoneyWallets.map(w => w.id);
+    const smartMoneyMap = new Map(smartMoneyWallets.map(w => [w.id, w]));
+
+    if (smartMoneyIds.length === 0) {
+      return res.json([]);
+    }
+
+    // 3. Compute absolute Net Shares across Active Markets exclusively for Smart Money 
+    const lifetimePositions = await db.select({
+      marketId: trades.marketId,
+      walletId: trades.walletId,
+      outcomeIndex: trades.outcomeIndex,
+      netShares: sql<number>`SUM(CASE WHEN ${trades.action} = 'BUY' THEN ${trades.shares} ELSE -${trades.shares} END)`.mapWith(Number)
+    })
+      .from(trades)
+      .where(inArray(trades.marketId, activeMarketIds))
+      .groupBy(trades.marketId, trades.walletId, trades.outcomeIndex)
+      .all();
+
+    // 4. Construct API Payload Leaderboard
+    const marketConvictions = new Map<number, { marketId: string, question: string, favoredOutcomeIndex: number, netConviction: number, wallets: any[] }>();
+
+    for (const mId of activeMarketIds) {
+      const positiveHolders = lifetimePositions.filter(p => !!p && p.marketId === mId && p.netShares > 0 && smartMoneyIds.includes(p.walletId));
+      if (positiveHolders.length === 0) continue;
+
+      const outcome0 = positiveHolders.filter(p => p.outcomeIndex === 0);
+      const outcome1 = positiveHolders.filter(p => p.outcomeIndex === 1);
+
+      const netConviction = Math.abs(outcome0.length - outcome1.length);
+      if (netConviction === 0) continue;
+
+      const isZeroFavored = outcome0.length > outcome1.length;
+      const favoredList = isZeroFavored ? outcome0 : outcome1;
+
+      const marketMeta = activeMarketMap.get(mId)!;
+
+      marketConvictions.set(mId, {
+        marketId: marketMeta.conditionId,
+        question: marketMeta.question,
+        favoredOutcomeIndex: isZeroFavored ? 0 : 1,
+        netConviction,
+        wallets: favoredList.map(h => {
+          const w = smartMoneyMap.get(h.walletId)!;
+          return {
+            address: w.address,
+            grade: w.grade,
+            roi: w.recentRoi30d ?? 0,
+            netShares: h.netShares
+          };
+        }).sort((a, b) => b.netShares - a.netShares) // Sort largest whale positions internally first
+      });
+    }
+
+    // 5. Convert to Array and Sort by highest conviction descending
+    const leaderboard = Array.from(marketConvictions.values()).sort((a, b) => b.netConviction - a.netConviction);
+
+    res.json(leaderboard);
+  } catch (error) {
+    console.error('[API] /api/stats/conviction error:', error);
+    res.status(500).json({ error: 'Failed to compute market convictions' });
+  }
+});
+
 // Phase 12.1: Advanced Graph API
 app.get('/api/syndicates/graph', async (req, res) => {
   try {

@@ -47,9 +47,13 @@ function App() {
   const [runningBacktest, setRunningBacktest] = useState(false);
   const [backtestSuccess, setBacktestSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'config' | 'performance' | 'explorer' | 'syndicates'>('config');
+  // Routing and Toggling
+  const [activeTab, setActiveTab] = useState<'config' | 'performance' | 'explorer' | 'syndicates' | 'smartMoney'>('config');
   const [syndicateView, setSyndicateView] = useState<'graph' | 'table'>('graph');
   const [syndicates, setSyndicates] = useState<any[]>([]);
+
+  // Phase 33: Smart Money Conviction
+  const [convictionMarkets, setConvictionMarkets] = useState<any[]>([]);
 
   // Phase 17: Interactive UI State
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
@@ -101,11 +105,22 @@ function App() {
         .catch(console.error);
     };
 
+    const fetchConvictions = () => {
+      fetch(`${API_URL}/stats/conviction`)
+        .then(res => res.json())
+        .then(data => {
+          if (!data?.error) setConvictionMarkets(data);
+        })
+        .catch(console.error);
+    }
+
     fetchIngestion(); // initial fetch
     fetchSyndicates();
+    fetchConvictions();
     const interval = setInterval(() => {
       fetchIngestion();
       fetchSyndicates();
+      fetchConvictions();
     }, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
   }, [telegramId]);
@@ -254,6 +269,11 @@ function App() {
           <button onClick={() => setActiveTab('syndicates')} className={`pb-4 text-sm font-medium transition-colors relative ${activeTab === 'syndicates' ? 'text-pink-400' : 'text-gray-400 hover:text-gray-200'}`}>
             Syndicates
             {activeTab === 'syndicates' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-pink-500 rounded-t-full"></span>}
+          </button>
+          {/* Phase 33: Smart Money Nav Tab */}
+          <button onClick={() => setActiveTab('smartMoney')} className={`pb-4 text-sm font-medium transition-colors relative ${activeTab === 'smartMoney' ? 'text-emerald-400' : 'text-gray-400 hover:text-gray-200'}`}>
+            Smart Money
+            {activeTab === 'smartMoney' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-500 rounded-t-full"></span>}
           </button>
         </div>
 
@@ -750,6 +770,80 @@ function App() {
                       )}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Phase 33: Smart Money Alpha Accumulation Feed */}
+        {activeTab === 'smartMoney' && (
+          <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl">
+              <div className="flex justify-between items-center mb-6">
+                <h2
+                  className="text-xl font-bold flex items-center gap-2 text-emerald-400 cursor-help"
+                  title="Lifetime Accumulation tracks pure Net DB Positions. Shows which Markets have the highest absolute conviction from graded whales."
+                >
+                  <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  Macro-Accumulation Tracker
+                </h2>
+                <div className="text-sm text-gray-400">
+                  <span className="font-bold text-emerald-400">{convictionMarkets.length}</span> active conditions
+                </div>
+              </div>
+
+              {convictionMarkets.length === 0 ? (
+                <div className="py-12 flex flex-col items-center justify-center text-gray-500 space-y-4">
+                  <svg className="w-12 h-12 opacity-50 block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <p>Awaiting Graded Database Aggregations... No strong whale networks detected right now.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {convictionMarkets.map((market: any) => (
+                    <article key={market.marketId} className="bg-gray-950 border border-gray-800 rounded-xl p-5 hover:border-emerald-500/50 transition-colors cursor-pointer shadow-lg relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 p-3">
+                        <span className="inline-flex items-center justify-center bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold px-2 py-1 rounded-full space-x-1">
+                          <span>Conviction:</span>
+                          <span className="text-sm">{market.netConviction}</span>
+                        </span>
+                      </div>
+
+                      <h3
+                        className="text-gray-100 font-bold mb-3 pr-24 line-clamp-3 hover:text-emerald-300 transition-colors"
+                        onClick={() => setSelectedMarket(market.marketId)}
+                      >
+                        {market.question}
+                      </h3>
+
+                      <div className="flex items-center space-x-2 mb-4 bg-gray-900 border border-gray-800 p-2 rounded-lg">
+                        <span className="text-xs text-gray-400 uppercase tracking-widest font-semibold flex-shrink-0">Whales Favor:</span>
+                        <span className={`text-sm font-extrabold ${market.favoredOutcomeIndex === 0 ? 'text-green-400' : 'text-blue-400'}`}>
+                          Outcome {market.favoredOutcomeIndex} ({market.favoredOutcomeIndex === 0 ? 'YES/A' : 'NO/B'})
+                        </span>
+                      </div>
+
+                      <details className="text-sm group-open">
+                        <summary className="text-emerald-400/80 cursor-pointer hover:text-emerald-300 flex items-center gap-1 font-medium transition-colors">
+                          View {market.wallets.length} Distinct Whales
+                        </summary>
+                        <ul className="mt-3 space-y-2 border-t border-gray-800/50 pt-3">
+                          {market.wallets.map((w: any, idx: number) => (
+                            <li key={idx} className="flex justify-between items-center text-xs pb-1 border-b border-gray-800/30 last:border-0 hover:bg-gray-900/50 p-1 rounded transition-colors" onClick={(e) => { e.stopPropagation(); setSelectedWallet(w.address); }}>
+                              <div className="flex items-center space-x-2">
+                                <span className={`px-1.5 py-0.5 rounded font-bold ${w.grade === 'A' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>{w.grade}</span>
+                                <span className="font-mono text-gray-300 hover:text-blue-300">{w.address.substring(0, 4)}..{w.address.substring(38)}</span>
+                              </div>
+                              <div className="flex flex-col items-end">
+                                <span className={`font-bold ${w.roi >= 0 ? 'text-green-500' : 'text-red-500'}`}>{w.roi >= 0 ? '+' : ''}{w.roi?.toFixed(1)}%</span>
+                                <span className="text-gray-500 text-[10px] uppercase font-mono tracking-tighter">Pos: {w.netShares.toFixed(0)}</span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </article>
+                  ))}
                 </div>
               )}
             </div>
