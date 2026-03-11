@@ -124,7 +124,7 @@ export async function fetchActiveMarkets(limit = 1000, offset = 0): Promise<Mark
  * Fetch historical trades for a specific market Condition ID using CLOB API
  * Implements Deep Cursor Pagination for Phase 10 High-Volume extraction
  */
-export async function fetchMarketTrades(conditionId: string, maxTrades = 20000, latestTs = 0): Promise<TradeData[]> {
+export async function fetchMarketTrades(conditionId: string, maxTrades = 100000, latestTs = 0): Promise<TradeData[]> {
   const mappedTrades: TradeData[] = [];
   let offset = 0;
 

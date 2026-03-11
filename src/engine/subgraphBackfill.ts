@@ -1,6 +1,6 @@
-import { db, setupDbSync } from '../db';
+import { db, setupDbSync, client } from '../db';
 import { trades, wallets, markets } from '../db/schema';
-import { eq, desc, like } from 'drizzle-orm';
+import { eq, desc, like, sql, and } from 'drizzle-orm';
 import { processTradeForFilter } from '../services/filterService';
 
 const GOLDSKY_URL = 'https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/polymarket-orderbook-resync/prod/gn';
@@ -73,7 +73,7 @@ async function fetchSubgraphTrades(tokenIds: string[], beforeTimestamp?: string,
 
       if (errors) {
         const errorMsg = JSON.stringify(errors);
-        if (errorMsg.includes('Query timed out')) {
+        if (errorMsg.includes('Query timed out') || errorMsg.includes('statement timeout')) {
           throw new Error('GOLDSKY_TIMEOUT');
         }
         console.error('[Subgraph] GraphQL Errors:', errors);
@@ -91,7 +91,7 @@ async function fetchSubgraphTrades(tokenIds: string[], beforeTimestamp?: string,
 }
 
 export async function backfillMarket(conditionId: string) {
-  console.log(`[Subgraph] Starting Goldsky History Backfill for ${conditionId}...`);
+  console.log(`[Subgraph] Starting Dual-Sweep Backfill for ${conditionId}...`);
 
   // 1. Fetch market metadata to map outcome indices
   const market = await db.select().from(markets).where(eq(markets.conditionId, conditionId)).get();
@@ -121,26 +121,29 @@ export async function backfillMarket(conditionId: string) {
     }
   }
 
-  // Final fallback
   if (!Array.isArray(tokenIds) || tokenIds.length === 0) {
     console.error(`[Subgraph] Market ${conditionId} STILL has no CLOB token IDs mapped. Cannot align outcomes.`);
     return;
   }
 
+  // -----------------------------------------------------
+  // SWEEP 1: Top-Down Gap Healer (Healing "Moving Ceiling" Gaps)
+  // -----------------------------------------------------
+  console.log(`[Subgraph] [Sweep 1] Checking for Top-Down gaps from present...`);
   let beforeTimestamp: string | undefined = undefined;
-  let totalIngested = 0;
-  let currentBatchSize = 400; // Phase 46: Start conservative to avoid timeouts
+  let totalIngestedSweep1 = 0;
+  let currentBatchSize = 400;
 
   while (true) {
-    console.log(`[Subgraph] Fetching up to ${currentBatchSize} prior trades${beforeTimestamp ? ` before ${beforeTimestamp}` : ' from present'}...`);
+    console.log(`[Subgraph] [Sweep 1] Fetching up to ${currentBatchSize} prior trades${beforeTimestamp ? ` before ${beforeTimestamp}` : ''}...`);
     let tradesList;
     try {
       tradesList = await fetchSubgraphTrades(tokenIds, beforeTimestamp, currentBatchSize);
     } catch (e: any) {
       if (e.message === 'GOLDSKY_TIMEOUT') {
         if (currentBatchSize <= 50) {
-          console.error(`[Subgraph] ❌ Query timed out even at batch size ${currentBatchSize}. Skipping market ${conditionId}.`);
-          return;
+          console.error(`[Subgraph] ❌ Query timed out even at batch size ${currentBatchSize}. Skipping Sweep 1.`);
+          break;
         }
         currentBatchSize = Math.floor(currentBatchSize / 2);
         console.warn(`[Subgraph] ⏳ Goldsky Timeout! Reducing batch size to ${currentBatchSize} and retrying...`);
@@ -149,156 +152,212 @@ export async function backfillMarket(conditionId: string) {
       throw e;
     }
 
-    // Adaptive increase: if we are successful at a small batch, try to ramp back up slowly if needed
-    // (though for backfill, staying conservative is often safer)
-    
     if (tradesList.length === 0) {
-      console.log(`[Subgraph] Completed backfill for ${conditionId}. Reached beginning of time.`);
+      console.log(`[Subgraph] [Sweep 1] No more trades returned. Ceiling gap closed.`);
       break;
     }
 
-    const uniqueWalletsFound = new Set<string>();
-    const validTradesToInsert: any[] = [];
-
-    // 2. Validate and Map
-    for (const raw of tradesList) {
-      const takerAddr = raw.taker?.id || raw.taker;
-      const makerAddr = raw.maker?.id || raw.maker;
-
-      if (!takerAddr || !raw.transactionHash) {
-        continue;
-      }
-
-      // Ensure case-insensitive matching against token IDs
-      const normTokenIds = tokenIds.map((t: any) => t.toString().toLowerCase());
-      const makerId = raw.makerAssetId ? raw.makerAssetId.toString().toLowerCase() : "";
-      const takerId = raw.takerAssetId ? raw.takerAssetId.toString().toLowerCase() : "";
-      const makerIsOutcome = normTokenIds.includes(makerId);
-      const takerIsOutcome = normTokenIds.includes(takerId);
-      let sharesRaw, usdcRaw, outcomeAssetId;
-      let side: "BUY" | "SELL" = "BUY";
-
-      if (makerIsOutcome) {
-        outcomeAssetId = raw.makerAssetId;
-        sharesRaw = raw.makerAmountFilled;
-        usdcRaw = raw.takerAmountFilled;
-        side = "BUY"; // Taker is buying outcome tokens from Maker
-      } else if (takerIsOutcome) {
-        outcomeAssetId = raw.takerAssetId;
-        sharesRaw = raw.takerAmountFilled;
-        usdcRaw = raw.makerAmountFilled;
-        side = "SELL"; // Taker is selling outcome tokens to Maker
-      } else {
-        // If neither token matches our DB (e.g. an LP providing collateral), skip it
-        continue;
-      }
-
-      if (!sharesRaw || !usdcRaw || Number(sharesRaw) === 0) {
-        continue;
-      }
-
-      const tradeData = {
-        id: raw.id,
-        transactionHash: raw.transactionHash,
-        taker: takerAddr,
-        maker: makerAddr,
-        timestamp: raw.timestamp.toString(),
-        asset_id: outcomeAssetId,
-        size: (Number(sharesRaw) / 1000000).toString(),
-        price: (Number(usdcRaw) / Number(sharesRaw)).toString(),
-        side
-      };
-
-      const isValid = await processTradeForFilter(tradeData as any, true);
-
-      if (isValid) {
-        const mappedOutcome = tokenIds.indexOf(tradeData.asset_id);
-        const finalOutcome = mappedOutcome !== -1 ? mappedOutcome : 0;
-
-        validTradesToInsert.push({
-          marketId: market.id,
-          outcomeIndex: finalOutcome,
-          action: tradeData.side.toUpperCase(),
-          price: parseFloat(tradeData.price),
-          shares: parseFloat(tradeData.size),
-          timestamp: new Date(parseInt(tradeData.timestamp) * 1000),
-          transactionHash: tradeData.transactionHash,
-          _tempWalletAddr: tradeData.taker.toLowerCase()
-        });
-
-        uniqueWalletsFound.add(tradeData.taker.toLowerCase());
-      }
+    const transactionHashes = tradesList.map((t: any) => t.transactionHash);
+    
+    // Check for collisions with existing data
+    const existingCount = await client.execute({
+      sql: `SELECT COUNT(id) as count FROM trades WHERE transaction_hash IN (${transactionHashes.map(() => '?').join(',')})`,
+      args: transactionHashes
+    });
+    
+    const count = Number(existingCount.rows[0].count);
+    
+    // Aggressive Short-Circuit: If history is already backfilled, any collision means we've bridged the live-gap
+    if (market.historyBackfilled && count > 0) {
+      console.log(`[Subgraph] [Sweep 1] ⚡ Collided with existing data in a SEALED market. Gap healed.`);
+      break;
+    }
+    
+    if (tradesList.length > 0 && count === tradesList.length) {
+      console.log(`[Subgraph] [Sweep 1] 🎯 Collided with solid block of existing data. Ceiling gap healed.`);
+      break;
     }
 
-    if (validTradesToInsert.length > 0) {
-      // 3. Insert Wallets
-      const walletWrites = Array.from(uniqueWalletsFound).map(address => ({ address }));
-      const WALLET_CHUNK = 100;
-      for (let i = 0; i < walletWrites.length; i += WALLET_CHUNK) {
-        await withRetry(() =>
-          db.insert(wallets)
-            .values(walletWrites.slice(i, i + WALLET_CHUNK))
-            .onConflictDoNothing({ target: wallets.address })
-        );
-        await new Promise(r => setTimeout(r, 50)); // Prevent SQLITE_BUSY locks
-      }
+    const { ingestedCount, lastTimestamp } = await processAndInsertTrades(tradesList, tokenIds, market);
+    totalIngestedSweep1 += ingestedCount;
+    beforeTimestamp = lastTimestamp;
 
-      // 4. Fetch DB Wallet IDs for mapping
-      const dbWallets = await db.select({ id: wallets.id, address: wallets.address })
-        .from(wallets)
-        .all(); // Since we are isolated in a script, it's ok to fetch all. For scale, we'd chunk ‘inArray’
-
-      const walletMap = new Map();
-      for (const w of dbWallets) {
-        walletMap.set(w.address, w.id);
-      }
-
-      // 5. Finalize Trades mapped payload
-      const mappedTradePayloads = validTradesToInsert.map(t => {
-        return {
-          walletId: walletMap.get(t._tempWalletAddr)!,
-          marketId: t.marketId,
-          outcomeIndex: t.outcomeIndex,
-          action: t.action,
-          price: t.price,
-          shares: t.shares,
-          timestamp: t.timestamp,
-          transactionHash: t.transactionHash
-        };
-      }).filter(t => t.walletId !== undefined);
-
-      // 6. DB Bulk Insert using native SQLite batch chunking (Phase 19 stability)
-      const TRADES_CHUNK = 100;
-      for (let i = 0; i < mappedTradePayloads.length; i += TRADES_CHUNK) {
-        const chunk = mappedTradePayloads.slice(i, i + TRADES_CHUNK);
-        await withRetry(() =>
-          db.insert(trades).values(chunk).onConflictDoNothing({ target: trades.transactionHash })
-        );
-        await new Promise(r => setTimeout(r, 50)); // Release event loop
-      }
-
-      totalIngested += mappedTradePayloads.length;
-      console.log(`[Subgraph] Inserted ${mappedTradePayloads.length} delta trades...`);
-    }
-
-    // Subgraph requires us to set the 'beforeTimestamp' to the OLDEST trade in this block
-    // to walk backward in time
-    const oldestTradeInBlock = tradesList[tradesList.length - 1];
-    beforeTimestamp = oldestTradeInBlock.timestamp.toString();
-
-    // Phase 46: Throttled delay to prevent overwhelming Goldsky
     await new Promise(r => setTimeout(r, 200));
   }
 
-  console.log(`[Subgraph] 🎉 Successfully ingested ${totalIngested} total historical trades backfilled from Goldsky.`);
+  // -----------------------------------------------------
+  // SWEEP 2: Bottom-Up History (Filing Deep History)
+  // -----------------------------------------------------
+  if (market.historyBackfilled) {
+    console.log(`[Subgraph] [Sweep 2] Market already marked as historyBackfilled. Skipping deep scan.`);
+  } else {
+    console.log(`[Subgraph] [Sweep 2] Starting Bottom-Up history scan...`);
+    
+    // Find absolute oldest trade for this market
+    const oldestLocal = await client.execute({
+      sql: `SELECT timestamp FROM trades WHERE market_id = ? ORDER BY timestamp ASC LIMIT 1`,
+      args: [market.id]
+    });
+
+    if (oldestLocal.rows.length > 0) {
+      const oldestTs = new Date(oldestLocal.rows[0].timestamp as string).getTime() / 1000;
+      beforeTimestamp = Math.floor(oldestTs).toString();
+      console.log(`[Subgraph] [Sweep 2] Paginating backward from timestamp ${beforeTimestamp}...`);
+
+      let totalIngestedSweep2 = 0;
+      currentBatchSize = 400;
+
+      while (true) {
+        let tradesList;
+        try {
+          tradesList = await fetchSubgraphTrades(tokenIds, beforeTimestamp, currentBatchSize);
+        } catch (e: any) {
+          if (e.message === 'GOLDSKY_TIMEOUT') {
+            if (currentBatchSize <= 50) break;
+            currentBatchSize = Math.floor(currentBatchSize / 2);
+            continue;
+          }
+          throw e;
+        }
+
+        if (tradesList.length === 0) {
+          console.log(`[Subgraph] [Sweep 2] Reached beginning of time. Sealing history.`);
+          await db.update(markets).set({ historyBackfilled: true }).where(eq(markets.id, market.id));
+          break;
+        }
+
+        const { ingestedCount, lastTimestamp } = await processAndInsertTrades(tradesList, tokenIds, market);
+        totalIngestedSweep2 += ingestedCount;
+        beforeTimestamp = lastTimestamp;
+
+        await new Promise(r => setTimeout(r, 200));
+      }
+      console.log(`[Subgraph] [Sweep 2] Ingested ${totalIngestedSweep2} deep historical trades.`);
+    } else {
+      console.log(`[Subgraph] [Sweep 2] No local trades found to backfill from. Market may be empty.`);
+    }
+  }
+
+  console.log(`[Subgraph] 🎉 Successfully completed Dual-Sweep for ${conditionId}.`);
 }
+
+/**
+ * Shared logic for mapping and bulk-inserting trades
+ */
+async function processAndInsertTrades(tradesList: any[], tokenIds: string[], market: any) {
+  const uniqueWalletsFound = new Set<string>();
+  const validTradesToInsert: any[] = [];
+
+  for (const raw of tradesList) {
+    const takerAddr = raw.taker?.id || raw.taker;
+    const makerAddr = raw.maker?.id || raw.maker;
+
+    if (!takerAddr || !raw.transactionHash) continue;
+
+    const normTokenIds = tokenIds.map((t: any) => t.toString().toLowerCase());
+    const makerId = raw.makerAssetId ? raw.makerAssetId.toString().toLowerCase() : "";
+    const takerId = raw.takerAssetId ? raw.takerAssetId.toString().toLowerCase() : "";
+    const makerIsOutcome = normTokenIds.includes(makerId);
+    const takerIsOutcome = normTokenIds.includes(takerId);
+    
+    let sharesRaw, usdcRaw, outcomeAssetId;
+    let side: "BUY" | "SELL" = "BUY";
+
+    if (makerIsOutcome) {
+      outcomeAssetId = raw.makerAssetId;
+      sharesRaw = raw.makerAmountFilled;
+      usdcRaw = raw.takerAmountFilled;
+      side = "BUY";
+    } else if (takerIsOutcome) {
+      outcomeAssetId = raw.takerAssetId;
+      sharesRaw = raw.takerAmountFilled;
+      usdcRaw = raw.makerAmountFilled;
+      side = "SELL";
+    } else {
+      continue;
+    }
+
+    if (!sharesRaw || !usdcRaw || Number(sharesRaw) === 0) continue;
+
+    const tradeData = {
+      id: raw.id,
+      transactionHash: raw.transactionHash,
+      taker: takerAddr,
+      maker: makerAddr,
+      timestamp: raw.timestamp.toString(),
+      asset_id: outcomeAssetId,
+      size: (Number(sharesRaw) / 1000000).toString(),
+      price: (Number(usdcRaw) / Number(sharesRaw)).toString(),
+      side
+    };
+
+    const isValid = await processTradeForFilter(tradeData as any, true);
+
+    if (isValid) {
+      const mappedOutcome = tokenIds.indexOf(tradeData.asset_id);
+      const finalOutcome = mappedOutcome !== -1 ? mappedOutcome : 0;
+
+      validTradesToInsert.push({
+        marketId: market.id,
+        outcomeIndex: finalOutcome,
+        action: tradeData.side.toUpperCase(),
+        price: parseFloat(tradeData.price),
+        shares: parseFloat(tradeData.size),
+        timestamp: new Date(parseInt(tradeData.timestamp) * 1000),
+        transactionHash: tradeData.transactionHash,
+        _tempWalletAddr: tradeData.taker.toLowerCase()
+      });
+
+      uniqueWalletsFound.add(tradeData.taker.toLowerCase());
+    }
+  }
+
+  if (validTradesToInsert.length > 0) {
+    // Insert Wallets
+    const walletWrites = Array.from(uniqueWalletsFound).map(address => ({ address }));
+    for (let i = 0; i < walletWrites.length; i += 100) {
+      await withRetry(() => db.insert(wallets).values(walletWrites.slice(i, i + 100)).onConflictDoNothing());
+      await new Promise(r => setTimeout(r, 50));
+    }
+
+    const dbWallets = await db.select({ id: wallets.id, address: wallets.address }).from(wallets).all();
+    const walletMap = new Map(dbWallets.map(w => [w.address, w.id]));
+
+    const mappedTradePayloads = validTradesToInsert.map(t => ({
+      walletId: walletMap.get(t._tempWalletAddr)!,
+      marketId: t.marketId,
+      outcomeIndex: t.outcomeIndex,
+      action: t.action,
+      price: t.price,
+      shares: t.shares,
+      timestamp: t.timestamp,
+      transactionHash: t.transactionHash
+    })).filter(t => t.walletId !== undefined);
+
+    for (let i = 0; i < mappedTradePayloads.length; i += 100) {
+      await withRetry(() => db.insert(trades).values(mappedTradePayloads.slice(i, i + 100)).onConflictDoNothing());
+      await new Promise(r => setTimeout(r, 50));
+    }
+
+    console.log(`[Subgraph] Inserted ${mappedTradePayloads.length} delta trades...`);
+    return { ingestedCount: mappedTradePayloads.length, lastTimestamp: tradesList[tradesList.length - 1].timestamp.toString() };
+  }
+
+  return { ingestedCount: 0, lastTimestamp: tradesList.length > 0 ? tradesList[tradesList.length - 1].timestamp.toString() : "" };
+}
+
 
 // -----------------------------------------------------
 // Phase 23: Auto-Targeting Backfill Functions
 // -----------------------------------------------------
 export async function autoBackfillTopMarkets(limit: number) {
-  console.log(`[Subgraph] Auto-Targeting Top ${limit} Markets by Volume...`);
-  const topMarkets = await db.select().from(markets).orderBy(desc(markets.volume)).limit(limit).all();
+  console.log(`[Subgraph] Auto-Targeting Top ${limit} Markets for Deep Backfill...`);
+  const topMarkets = await db.select()
+    .from(markets)
+    .where(eq(markets.historyBackfilled, false))
+    .orderBy(desc(markets.volume))
+    .limit(limit)
+    .all();
 
   let current = 1;
   const total = topMarkets.length;
@@ -313,7 +372,7 @@ export async function autoBackfillKeywordMarkets(keyword: string, limit: number)
   console.log(`[Subgraph] Auto-Targeting Top ${limit} Markets matching "${keyword}"...`);
   const matchedMarkets = await db.select()
     .from(markets)
-    .where(like(markets.question, `%${keyword}%`))
+    .where(sql`${markets.question} LIKE ${`%${keyword}%`} AND ${markets.historyBackfilled} = 0`)
     .orderBy(desc(markets.volume))
     .limit(limit)
     .all();
